@@ -52,7 +52,7 @@ interface EscrowStateResult {
   error: string | null;
 }
 
-export function useEscrowState(escrowOwner: string, escrowSequence: number): EscrowStateResult {
+export function useEscrowState(escrowOwner: string, escrowSequence: number, childEscrows: number[] = []): EscrowStateResult {
   const [siteState, setSiteState] = useState<SiteState | null>(null);
   const [escrowBalance, setEscrowBalance] = useState<string>('0');
   const [loading, setLoading] = useState(true);
@@ -71,30 +71,45 @@ export function useEscrowState(escrowOwner: string, escrowSequence: number): Esc
     let active = true;
 
     const poll = async () => {
-      try {
-        const resp = await client.request({
-          command: 'ledger_entry',
-          escrow: { owner: escrowOwner, seq: escrowSequence },
-          ledger_index: 'validated',
-        });
+      // Try master escrow first, then child escrows in order.
+      // The master escrow is deleted after M0; child escrows are deleted as each phase completes.
+      // We stop at the first escrow that exists on-chain.
+      const candidates = [escrowSequence, ...childEscrows];
+      let found = false;
 
-        if (!active) return;
+      for (const seq of candidates) {
+        try {
+          const resp = await client.request({
+            command: 'ledger_entry',
+            escrow: { owner: escrowOwner, seq },
+            ledger_index: 'validated',
+          });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const node = (resp.result as any).node ?? {};
-        const amount: string = node.Amount ?? '0';
-        setEscrowBalance(amount);
+          if (!active) return;
+          found = true;
 
-        const dataHex: string | undefined = node.Data;
-        if (dataHex) {
-          setSiteState(decodeSiteState(dataHex));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const node = (resp.result as any).node ?? {};
+          const amount: string = node.Amount ?? '0';
+          setEscrowBalance(amount);
+
+          const dataHex: string | undefined = node.Data;
+          if (dataHex) {
+            setSiteState(decodeSiteState(dataHex));
+          }
+
+          setError(null);
+          setLoading(false);
+          break;
+        } catch {
+          // This escrow doesn't exist (already finished); try the next one.
+          continue;
         }
+      }
 
-        setError(null);
-        setLoading(false);
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : String(err));
+      if (!active) return;
+      if (!found) {
+        setError('no active escrow found');
         setLoading(false);
       }
     };

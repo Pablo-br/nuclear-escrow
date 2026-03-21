@@ -14,7 +14,7 @@ app.use((_req, res, next) => {
   next();
 });
 
-app.options('*', (_req, res) => { res.sendStatus(204); });
+app.options('/{*path}', (_req, res) => { res.sendStatus(204); });
 
 // ─── GET /state ───────────────────────────────────────────────────────────────
 

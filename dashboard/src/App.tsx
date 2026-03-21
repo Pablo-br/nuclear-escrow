@@ -15,39 +15,66 @@ import {
 interface NuclearState {
   escrowOwner: string;
   escrowSequence: number;
+  current_milestone: number;
+  facilityId: string;
+  childEscrows: number[];
 }
 
 // Use relative paths — Vite proxies /state and /milestone to localhost:3001
 const SERVER = '';
 const isDemoMode = new URLSearchParams(window.location.search).get('demo') === '1';
 
+const FALLBACK_STATE: NuclearState = {
+  escrowOwner: 'mock',
+  escrowSequence: 0,
+  current_milestone: 0,
+  facilityId: 'PLANT-FR-001',
+  childEscrows: [],
+};
+
 export default function App() {
   const [nucState, setNucState] = useState<NuclearState | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
 
   useEffect(() => {
-    fetch(`${SERVER}/state`)
-      .then(r => {
-        if (!r.ok) throw new Error('not found');
-        return r.json() as Promise<NuclearState>;
-      })
-      .then(data => {
-        setNucState(data);
-        setStateLoaded(true);
-      })
-      .catch(() => {
-        setNucState({ escrowOwner: 'mock', escrowSequence: 0 });
-        setStateLoaded(true);
-      });
+    let active = true;
+    let initialized = false;
+
+    const loadState = () => {
+      fetch(`${SERVER}/state`)
+        .then(r => {
+          if (!r.ok) throw new Error('not found');
+          return r.json() as Promise<NuclearState>;
+        })
+        .then(data => {
+          if (!active) return;
+          setNucState(data);
+          if (!initialized) { initialized = true; setStateLoaded(true); }
+        })
+        .catch(() => {
+          if (!active) return;
+          if (!initialized) {
+            initialized = true;
+            setNucState(FALLBACK_STATE);
+            setStateLoaded(true);
+          }
+        });
+    };
+
+    loadState();
+    const id = setInterval(loadState, 4000);
+    return () => { active = false; clearInterval(id); };
   }, []);
 
   const escrowOwner    = nucState?.escrowOwner    ?? 'mock';
   const escrowSequence = nucState?.escrowSequence ?? 0;
+  const childEscrows   = nucState?.childEscrows   ?? [];
 
-  const { siteState, escrowBalance, loading } = useEscrowState(escrowOwner, escrowSequence);
+  const { siteState, escrowBalance, loading } = useEscrowState(escrowOwner, escrowSequence, childEscrows);
   const { milestones } = useMilestoneHistory(escrowOwner);
 
-  const currentMilestone = siteState?.current_milestone ?? 1;
+  // Prefer on-chain siteState; fall back to server file state when master escrow is gone
+  const currentMilestone = siteState?.current_milestone ?? nucState?.current_milestone ?? 0;
 
   const runMilestone = async (phase: number) => {
     const resp = await fetch(`${SERVER}/milestone/${phase}`, { method: 'POST' });
