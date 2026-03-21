@@ -63,7 +63,7 @@ export async function spawnChildEscrows(
 
     const encodedState = encodeSiteState(siteState);
     const stateHex = encodedState.toString('hex').toUpperCase();
-    const finishAfter = toRippleTime(Date.now() / 1000 + 30);
+    const finishAfter = toRippleTime(Date.now() / 1000 + 5);
 
     const tx: any = {
       TransactionType: 'EscrowCreate',
