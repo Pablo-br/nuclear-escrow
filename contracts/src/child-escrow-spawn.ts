@@ -96,6 +96,8 @@ export async function spawnChildEscrows(
     };
 
     const prepared = await client.autofill(tx);
+    // Extend LastLedgerSequence by 30 extra ledgers to avoid tefPAST_SEQ in WSL2.
+    prepared.LastLedgerSequence = (prepared.LastLedgerSequence as number) + 30;
     const signed = operatorWallet.sign(prepared);
     const result = await client.submitAndWait(signed.tx_blob);
 

@@ -33,6 +33,9 @@ export async function finishEscrow(
   };
 
   const prepared = await client.autofill(tx);
+  // Extend LastLedgerSequence by 30 extra ledgers (total ~50) to avoid tefPAST_SEQ
+  // caused by WSL2 WebSocket latency between autofill and submitAndWait's pre-flight check.
+  prepared.LastLedgerSequence = (prepared.LastLedgerSequence as number) + 30;
   const signed = submitter.sign(prepared);
   const result = await client.submitAndWait(signed.tx_blob);
 
