@@ -15,7 +15,7 @@ $TSX contracts/src/setup-wallets.ts
 
 echo ""
 echo "=== [3/4] Init facility ==="
-$TSX cli/init.ts --site=PLANT-FR-001 --liability=1000000
+$TSX cli/init.ts --site=PLANT-FR-001 --liability=847000000
 
 echo ""
 echo "=== Waiting 35s for master escrow FinishAfter to pass... ==="
