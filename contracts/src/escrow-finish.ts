@@ -7,6 +7,10 @@ export interface FinishResult {
   reason?: string;
 }
 
+const MAX_RETRIES = 3;
+// ~40 seconds of extra headroom (40s / 3.3s per ledger ≈ 12) on top of autofill's default ~20.
+const LAST_LEDGER_BUFFER = 12;
+
 export async function finishEscrow(
   submitter: Wallet,
   owner: string,
@@ -15,8 +19,6 @@ export async function finishEscrow(
   client: Client
 ): Promise<FinishResult> {
   const encoded = encodeMilestoneAttestation(attestation);
-  const dataHex = encoded.toString('hex').toUpperCase();
-
   const tx: any = {
     TransactionType: 'EscrowFinish',
     Account: submitter.address,
@@ -26,29 +28,36 @@ export async function finishEscrow(
       {
         Memo: {
           MemoType: Buffer.from('Attestation', 'utf-8').toString('hex').toUpperCase(),
-          MemoData: dataHex,
+          MemoData: encoded.toString('hex').toUpperCase(),
         },
       },
     ],
   };
 
-  const prepared = await client.autofill(tx);
-  // Extend LastLedgerSequence by 30 extra ledgers (total ~50) to avoid tefPAST_SEQ
-  // caused by WSL2 WebSocket latency between autofill and submitAndWait's pre-flight check.
-  prepared.LastLedgerSequence = (prepared.LastLedgerSequence as number) + 30;
-  const signed = submitter.sign(prepared);
-  const result = await client.submitAndWait(signed.tx_blob);
+  let lastError = 'unknown';
 
-  const txHash: string = (result.result as any).hash ?? '';
-  const meta = (result.result as any).meta ?? (result.result as any).metaData;
-  const txResult: string = meta?.TransactionResult ?? 'unknown';
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const prepared = await client.autofill(tx);
+      prepared.LastLedgerSequence = (prepared.LastLedgerSequence as number) + LAST_LEDGER_BUFFER;
+      const signed = submitter.sign(prepared);
+      const result = await client.submitAndWait(signed.tx_blob);
 
-  if (txResult === 'tesSUCCESS') {
-    return { success: true, txHash };
-  } else {
-    const reason: string = (result.result as any).engine_result_message
-      ?? meta?.TransactionResult
-      ?? 'unknown';
-    return { success: false, txHash, reason };
+      const txHash: string = (result.result as any).hash ?? '';
+      const meta = (result.result as any).meta ?? (result.result as any).metaData;
+      const txResult: string = meta?.TransactionResult ?? 'unknown';
+
+      if (txResult === 'tesSUCCESS') return { success: true, txHash };
+
+      const reason: string = (result.result as any).engine_result_message ?? txResult ?? 'unknown';
+      if (txResult !== 'tefPAST_SEQ') return { success: false, txHash, reason };
+      lastError = reason;
+    } catch (e: any) {
+      lastError = e.message ?? String(e);
+      const isPastSeq = lastError.includes('tefPAST_SEQ') || lastError.includes('LastLedgerSequence');
+      if (!isPastSeq) throw e;
+    }
   }
+
+  return { success: false, txHash: '', reason: `tefPAST_SEQ after ${MAX_RETRIES} attempts: ${lastError}` };
 }

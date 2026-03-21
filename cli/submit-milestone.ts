@@ -128,9 +128,12 @@ async function main() {
   console.log(`[Quorum]  3/5 oracles agreed -> submitting`);
 
   // ── 7. Build MilestoneAttestation ────────────────────────────────────────
+  console.log(`[Attest]  Building MilestoneAttestation for phase ${phase}...`);
   const attestation = agg.buildAttestation(phase, batch.median, sensorHash);
+  console.log(`[Attest]  Attestation built (${attestation ? 'ok' : 'FAILED'})`);
 
   // ── 8. Submit EscrowFinish ────────────────────────────────────────────────
+  console.log(`[Chain]   Connecting to XRPL and submitting EscrowFinish...`);
   const client = new Client(TESTNET_WS);
   await client.connect();
 
@@ -201,7 +204,8 @@ async function main() {
       fs.writeFileSync(statePath, JSON.stringify(freshState, null, 2));
       console.log(`[Receipt] MPT receipt minted: ${issuanceId}`);
     } catch (e: any) {
-      console.warn(`[Receipt] MPT mint skipped: ${e.message ?? e}`);
+      console.error(`[Receipt] MPT mint FAILED: ${e.message ?? e}`);
+      if (e.stack) console.error(e.stack);
     }
   } else {
     console.log(`[Result]  WASM returned 0 -> REJECTED: ${result.reason ?? 'unknown'}`);
@@ -211,5 +215,6 @@ async function main() {
 
 main().catch((e) => {
   console.error('Error:', e.message ?? e);
+  if (e.stack) console.error(e.stack);
   process.exit(1);
 });

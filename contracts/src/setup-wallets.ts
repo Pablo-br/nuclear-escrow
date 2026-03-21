@@ -24,6 +24,7 @@ async function main() {
     const funded = await client.fundWallet(wallet);
     wallets[name] = funded.wallet;
     console.log(`${funded.wallet.address}  balance: ${funded.balance} XRP`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
   }
 
   // Build .env.testnet content

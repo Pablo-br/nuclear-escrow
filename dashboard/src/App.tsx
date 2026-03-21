@@ -47,7 +47,8 @@ export default function App() {
   const [nucState, setNucState] = useState<NuclearState | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
   const [modalConfig, setModalConfig] = useState<{ url: string; title: string } | null>(null);
-  const isRunning = modalConfig !== null;
+  const [milestoneRunning, setMilestoneRunning] = useState(false);
+  const isRunning = modalConfig !== null || milestoneRunning;
 
   useEffect(() => {
     let active = true;
@@ -92,11 +93,11 @@ export default function App() {
   const handleStartDemo = () =>
     setModalConfig({ url: `${SERVER}/deploy`, title: 'Full Reset — Funding wallets & deploying escrow…' });
 
-  const handleNextStep = () =>
-    setModalConfig({
-      url: `${SERVER}/milestone/${currentMilestone}`,
-      title: `M${currentMilestone}: ${MILESTONE_NAMES[currentMilestone] ?? `Phase ${currentMilestone}`}`,
-    });
+  const handleNextStep = () => {
+    setMilestoneRunning(true);
+    fetch(`${SERVER}/milestone/${currentMilestone}`, { method: 'POST' })
+      .finally(() => setMilestoneRunning(false));
+  };
 
   const handleModalClose = () => setModalConfig(null);
 

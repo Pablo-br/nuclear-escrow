@@ -50,13 +50,12 @@ export async function spawnChildEscrows(
   // The real RLUSD allocation per phase is recorded in the LiabilityRlusd memo below.
   const DEMO_CHILD_COLLATERAL_DROPS = 100000; // 0.1 XRP per child
 
+  const MAX_RETRIES = 3;
+
   for (let phase = 1; phase <= 6; phase++) {
     const rlusdAmount = Math.floor(totalRlusd * MILESTONE_FUND_PCT[phase] / 100);
     const amount = DEMO_CHILD_COLLATERAL_DROPS;
 
-    // SiteState for this child escrow: current_milestone = phase - 1
-    // WASM check_sequence: attest.milestone_index == state.current_milestone + 1
-    // so this child will only accept attestation for milestone `phase`
     const siteState = {
       current_milestone: phase - 1,
       oracle_pubkeys,
@@ -68,50 +67,94 @@ export async function spawnChildEscrows(
 
     const encodedState = encodeSiteState(siteState);
     const stateHex = encodedState.toString('hex').toUpperCase();
-    const finishAfter = toRippleTime(Date.now() / 1000 + 5);
 
-    const tx: any = {
-      TransactionType: 'EscrowCreate',
-      Account: operatorWallet.address,
-      Amount: String(amount),
-      Destination: facilityConfig.contractorAddress,
-      FinishAfter: finishAfter,
-      CancelAfter: cancelAfter,
-      Memos: [
-        { Memo: { MemoType: toMemoHex('FinishFunctionHash'), MemoData: wasmHash } },
-        { Memo: { MemoType: toMemoHex('SiteState'), MemoData: stateHex } },
-        {
-          Memo: {
-            MemoType: toMemoHex('ChildPhase'),
-            MemoData: Buffer.from([phase]).toString('hex').toUpperCase(),
+    let sequence: number | null = null;
+    let lastError: string = 'unknown';
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const finishAfter = toRippleTime(Date.now() / 1000 + 5);
+
+      const tx: any = {
+        TransactionType: 'EscrowCreate',
+        Account: operatorWallet.address,
+        Amount: String(amount),
+        Destination: facilityConfig.contractorAddress,
+        FinishAfter: finishAfter,
+        CancelAfter: cancelAfter,
+        Memos: [
+          { Memo: { MemoType: toMemoHex('FinishFunctionHash'), MemoData: wasmHash } },
+          { Memo: { MemoType: toMemoHex('SiteState'), MemoData: stateHex } },
+          {
+            Memo: {
+              MemoType: toMemoHex('ChildPhase'),
+              MemoData: Buffer.from([phase]).toString('hex').toUpperCase(),
+            },
           },
-        },
-        {
-          Memo: {
-            MemoType: toMemoHex('LiabilityRlusd'),
-            MemoData: Buffer.from(String(rlusdAmount), 'utf-8').toString('hex').toUpperCase(),
+          {
+            Memo: {
+              MemoType: toMemoHex('LiabilityRlusd'),
+              MemoData: Buffer.from(String(rlusdAmount), 'utf-8').toString('hex').toUpperCase(),
+            },
           },
-        },
-      ],
-    };
+        ],
+      };
 
-    const prepared = await client.autofill(tx);
-    // Extend LastLedgerSequence by 30 extra ledgers to avoid tefPAST_SEQ in WSL2.
-    prepared.LastLedgerSequence = (prepared.LastLedgerSequence as number) + 30;
-    const signed = operatorWallet.sign(prepared);
-    const result = await client.submitAndWait(signed.tx_blob);
+      try {
+        const prepared = await client.autofill(tx);
+        prepared.LastLedgerSequence = (prepared.LastLedgerSequence as number) + 30;
+        const signed = operatorWallet.sign(prepared);
+        const result = await client.submitAndWait(signed.tx_blob);
 
-    const meta = (result.result as any).meta ?? (result.result as any).metaData;
-    if (meta?.TransactionResult !== 'tesSUCCESS') {
-      throw new Error(`Child EscrowCreate phase ${phase} failed: ${meta?.TransactionResult}`);
+        const meta = (result.result as any).meta ?? (result.result as any).metaData;
+        const txResult = meta?.TransactionResult;
+
+        if (txResult === 'tesSUCCESS') {
+          const res = result.result as any;
+          sequence = res.Sequence ?? res.tx_json?.Sequence;
+          console.log(
+            `  Phase ${phase}: seq=${sequence}  ${rlusdAmount.toLocaleString()} RLUSD (${MILESTONE_FUND_PCT[phase]}%)${attempt > 1 ? ` (attempt ${attempt})` : ''}`
+          );
+          break;
+        }
+
+        const reason = (result.result as any).engine_result_message ?? txResult ?? 'unknown';
+        lastError = `${txResult} — ${reason}`;
+        console.error(`[Spawn]   Phase ${phase} attempt ${attempt}/${MAX_RETRIES} FAILED: ${lastError}`);
+      } catch (e: any) {
+        lastError = e.message ?? String(e);
+        console.error(`[Spawn]   Phase ${phase} attempt ${attempt}/${MAX_RETRIES} threw: ${lastError}`);
+      }
+
+      if (attempt < MAX_RETRIES) {
+        console.log(`[Spawn]   Retrying phase ${phase} in 3s...`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
     }
 
-    const res = result.result as any;
-    const sequence: number = res.Sequence ?? res.tx_json?.Sequence;
-    console.log(
-      `  Phase ${phase}: seq=${sequence}  ${rlusdAmount.toLocaleString()} RLUSD (${MILESTONE_FUND_PCT[phase]}%)`
-    );
+    if (sequence === null) {
+      throw new Error(`Child EscrowCreate phase ${phase} failed after ${MAX_RETRIES} attempts: ${lastError}`);
+    }
+
     sequences.push(sequence);
+  }
+
+  // Verify all escrows exist on-ledger before writing state
+  console.log('[Spawn]   Verifying all child escrows on-ledger...');
+  const accountObjects: any = await client.request({
+    command: 'account_objects',
+    account: operatorWallet.address,
+    type: 'escrow',
+    limit: 400,
+  });
+  const onChainSeqs = new Set<number>(
+    (accountObjects.result.account_objects ?? []).map((o: any) => o.Sequence)
+  );
+  for (let i = 0; i < sequences.length; i++) {
+    const phase = i + 1;
+    if (!onChainSeqs.has(sequences[i])) {
+      throw new Error(`Child escrow phase ${phase} (seq=${sequences[i]}) not found on-ledger after creation`);
+    }
+    console.log(`[Spawn]   Phase ${phase} seq=${sequences[i]} confirmed on-ledger ✓`);
   }
 
   // Persist to .nuclear-state.json
