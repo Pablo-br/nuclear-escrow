@@ -75,8 +75,8 @@ export async function createMasterEscrow(
   //    is not yet in standard xrpl.js types.
   const amountDrops = String(parseInt(config.liabilityRlusd));
 
-  // FinishAfter = now + 10s (escrow becomes finishable almost immediately for demo)
-  const finishAfter = toRippleTime(Date.now() / 1000 + 10);
+  // FinishAfter = now + 30s (gives enough ledger closes before the first EscrowFinish)
+  const finishAfter = toRippleTime(Date.now() / 1000 + 30);
 
   const tx: any = {
     TransactionType: 'EscrowCreate',

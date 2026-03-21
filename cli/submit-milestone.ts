@@ -58,7 +58,19 @@ async function main() {
   const currentMilestone: number = state.current_milestone ?? 0;
   const facilityId: string = state.facilityId;
   const escrowOwner: string = state.escrowOwner;
-  const escrowSequence: number = state.escrowSequence;
+
+  // Phase 0 uses the master escrow; phases 1-6 use their dedicated child escrow
+  let escrowSequence: number;
+  if (phase === 0) {
+    escrowSequence = state.escrowSequence;
+  } else {
+    const childEscrows: number[] = state.childEscrows ?? [];
+    if (childEscrows.length < phase) {
+      console.error(`Child escrow for phase ${phase} not found. Run --phase=0 first to spawn child escrows.`);
+      process.exit(1);
+    }
+    escrowSequence = childEscrows[phase - 1];
+  }
 
   console.log(`\n=== NuclearEscrow Submit Milestone: phase=${phase} ===`);
   console.log(`Facility: ${facilityId}  |  Current milestone: ${currentMilestone}\n`);
