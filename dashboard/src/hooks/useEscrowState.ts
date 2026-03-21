@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Client } from 'xrpl';
 import {
   type SiteState,
   MOCK_SITE_STATE,
@@ -43,6 +42,18 @@ function decodeSiteState(hex: string): SiteState {
   return { current_milestone, oracle_pubkeys, thresholds, domain_id, facility_id, milestone_timestamps };
 }
 
+// ─── XRPL HTTP helper (goes through our own server to avoid CORS) ─────────────
+
+async function xrplRpc(method: string, params: unknown): Promise<unknown> {
+  const resp = await fetch('/xrpl-rpc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method, params: [params] }),
+  });
+  const json = await resp.json() as { result: unknown };
+  return json.result;
+}
+
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 interface EscrowStateResult {
@@ -66,34 +77,31 @@ export function useEscrowState(escrowOwner: string, escrowSequence: number, chil
       return;
     }
 
-    const client = new Client('wss://s.altnet.rippletest.net:51233');
-    let intervalId: ReturnType<typeof setInterval> | null = null;
     let active = true;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
     const poll = async () => {
       // Try master escrow first, then child escrows in order.
       // The master escrow is deleted after M0; child escrows are deleted as each phase completes.
-      // We stop at the first escrow that exists on-chain.
       const candidates = [escrowSequence, ...childEscrows];
       let found = false;
 
       for (const seq of candidates) {
         try {
-          const resp = await client.request({
-            command: 'ledger_entry',
+          const result = await xrplRpc('ledger_entry', {
             escrow: { owner: escrowOwner, seq },
             ledger_index: 'validated',
-          });
+          }) as { status?: string; node?: Record<string, unknown> };
 
+          if (result?.status !== 'success') continue;
           if (!active) return;
-          found = true;
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const node = (resp.result as any).node ?? {};
-          const amount: string = node.Amount ?? '0';
+          found = true;
+          const node = result.node ?? {};
+          const amount = (node.Amount as string | undefined) ?? '0';
           setEscrowBalance(amount);
 
-          const dataHex: string | undefined = node.Data;
+          const dataHex = node.Data as string | undefined;
           if (dataHex) {
             setSiteState(decodeSiteState(dataHex));
           }
@@ -102,7 +110,7 @@ export function useEscrowState(escrowOwner: string, escrowSequence: number, chil
           setLoading(false);
           break;
         } catch {
-          // This escrow doesn't exist (already finished); try the next one.
+          // This escrow doesn't exist or errored; try the next one.
           continue;
         }
       }
@@ -116,9 +124,10 @@ export function useEscrowState(escrowOwner: string, escrowSequence: number, chil
 
     const run = async () => {
       try {
-        await client.connect();
         await poll();
-        intervalId = setInterval(poll, 4000);
+        if (active) {
+          intervalId = setInterval(() => { void poll(); }, 4000);
+        }
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -131,7 +140,6 @@ export function useEscrowState(escrowOwner: string, escrowSequence: number, chil
     return () => {
       active = false;
       if (intervalId !== null) clearInterval(intervalId);
-      void client.disconnect();
     };
   }, [escrowOwner, escrowSequence]);
 

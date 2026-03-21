@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/state':     { target: 'http://localhost:3001', changeOrigin: true },
       '/milestone': { target: 'http://localhost:3001', changeOrigin: true },
+      '/xrpl-rpc':  { target: 'http://localhost:3001', changeOrigin: true },
     },
   },
 })

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Client } from 'xrpl';
 import { type MilestoneEvent, MOCK_MILESTONE_HISTORY } from '../mock-data.ts';
 
 interface MilestoneHistoryResult {
@@ -9,6 +8,16 @@ interface MilestoneHistoryResult {
 
 // XRPL epoch offset: 2000-01-01 00:00:00 UTC in Unix seconds
 const XRPL_EPOCH_OFFSET = 946684800;
+
+async function xrplRpc(method: string, params: unknown): Promise<unknown> {
+  const resp = await fetch('/xrpl-rpc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method, params: [params] }),
+  });
+  const json = await resp.json() as { result: unknown };
+  return json.result;
+}
 
 export function useMilestoneHistory(escrowOwner: string): MilestoneHistoryResult {
   const [milestones, setMilestones] = useState<MilestoneEvent[]>([]);
@@ -21,25 +30,22 @@ export function useMilestoneHistory(escrowOwner: string): MilestoneHistoryResult
       return;
     }
 
-    const client = new Client('wss://s.altnet.rippletest.net:51233');
     let active = true;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    const fetch = async () => {
+    const fetchHistory = async () => {
       try {
-        await client.connect();
-
-        const resp = await client.request({
-          command: 'account_tx',
+        const result = await xrplRpc('account_tx', {
           account: escrowOwner,
           ledger_index_min: -1,
           ledger_index_max: -1,
           limit: 200,
-        });
+        }) as { transactions?: unknown[] };
 
         if (!active) return;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const txList: any[] = (resp.result as any).transactions ?? [];
+        const txList: any[] = result?.transactions ?? [];
 
         const events: MilestoneEvent[] = [];
 
@@ -97,19 +103,17 @@ export function useMilestoneHistory(escrowOwner: string): MilestoneHistoryResult
         setLoading(false);
       } catch {
         if (!active) return;
-        // Fall back to mock on error
-        setMilestones(MOCK_MILESTONE_HISTORY);
+        setMilestones([]);
         setLoading(false);
-      } finally {
-        if (active) void client.disconnect();
       }
     };
 
-    void fetch();
+    void fetchHistory();
+    intervalId = setInterval(() => { void fetchHistory(); }, 8000);
 
     return () => {
       active = false;
-      void client.disconnect();
+      if (intervalId !== null) clearInterval(intervalId);
     };
   }, [escrowOwner]);
 

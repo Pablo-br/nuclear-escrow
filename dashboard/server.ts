@@ -3,9 +3,11 @@ import { readFile } from 'fs/promises';
 import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import https from 'https';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
+app.use(express.json());
 
 // Allow browser fetch from Vite dev server
 app.use((_req, res, next) => {
@@ -26,6 +28,34 @@ app.get('/state', async (_req, res) => {
   } catch {
     res.status(404).json({ error: 'state file not found' });
   }
+});
+
+// ─── POST /xrpl-rpc — proxy to XRPL testnet (avoids browser CORS) ────────────
+
+app.post('/xrpl-rpc', (req, res) => {
+  const body = JSON.stringify(req.body ?? {});
+  const options = {
+    hostname: 's.altnet.rippletest.net',
+    port: 51234,
+    path: '/',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    },
+  };
+
+  const proxy = https.request(options, (upstream) => {
+    res.setHeader('Content-Type', 'application/json');
+    upstream.pipe(res);
+  });
+
+  proxy.on('error', (err) => {
+    res.status(502).json({ error: err.message });
+  });
+
+  proxy.write(body);
+  proxy.end();
 });
 
 // ─── POST /milestone/:phase ───────────────────────────────────────────────────
