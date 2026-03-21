@@ -1,0 +1,5 @@
+node_modules/
+.env.testnet
+target/
+*.wasm
+!contracts/wasm/finish.wasm
