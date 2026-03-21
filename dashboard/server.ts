@@ -20,7 +20,8 @@ app.options('/{*path}', (_req, res) => { res.sendStatus(204); });
 
 // ─── GET /state ───────────────────────────────────────────────────────────────
 
-app.get('/state', async (_req, res) => {
+app.get('/state', async (req, res) => {
+  console.log(`[${new Date().toISOString()}] GET /state from ${req.headers.origin ?? req.headers.host ?? 'unknown'}`);
   try {
     const statePath = join(__dirname, '..', '.nuclear-state.json');
     const raw = await readFile(statePath, 'utf-8');
@@ -33,6 +34,7 @@ app.get('/state', async (_req, res) => {
 // ─── POST /xrpl-rpc — proxy to XRPL testnet (avoids browser CORS) ────────────
 
 app.post('/xrpl-rpc', (req, res) => {
+  console.log(`[${new Date().toISOString()}] POST /xrpl-rpc method=${req.body?.method}`);
   const body = JSON.stringify(req.body ?? {});
   const options = {
     hostname: 's.altnet.rippletest.net',

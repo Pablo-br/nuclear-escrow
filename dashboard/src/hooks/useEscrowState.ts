@@ -77,6 +77,12 @@ export function useEscrowState(escrowOwner: string, escrowSequence: number, chil
       return;
     }
 
+    // Reset stale mock state before connecting to real chain
+    setSiteState(null);
+    setEscrowBalance('0');
+    setLoading(true);
+    setError(null);
+
     let active = true;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
