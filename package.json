@@ -1,0 +1,17 @@
+{
+  "name": "nuclear-escrow",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "contracts",
+    "oracle",
+    "cli",
+    "shared",
+    "dashboard"
+  ],
+  "scripts": {
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "test:wasm": "cargo test --manifest-path wasm/Cargo.toml",
+    "dev": "cd dashboard && npm run dev"
+  }
+}
