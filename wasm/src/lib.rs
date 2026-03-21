@@ -2,7 +2,7 @@ pub mod state;
 pub mod crypto;
 pub mod checks;
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use state::{MilestoneAttestation, SiteState};
 use checks::{check_sequence, check_threshold, verify_oracle_quorum};
 
