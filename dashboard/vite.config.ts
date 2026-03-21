@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/state':     { target: 'http://localhost:3001', changeOrigin: true, configure: (proxy) => { proxy.on('error', (err) => console.error('[proxy/state]', err.message)); } },
       '/milestone': { target: 'http://localhost:3001', changeOrigin: true },
+      '/contracts': { target: 'http://localhost:3001', changeOrigin: true },
       '/xrpl-rpc':  { target: 'http://localhost:3001', changeOrigin: true, configure: (proxy) => { proxy.on('error', (err) => console.error('[proxy/xrpl-rpc]', err.message)); } },
       '/audit':     { target: 'http://localhost:3001', changeOrigin: true },
       '/deploy':    { target: 'http://localhost:3001', changeOrigin: true },

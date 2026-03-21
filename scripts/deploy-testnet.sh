@@ -4,7 +4,7 @@ set -e
 # Run from the nuclear-escrow directory
 cd "$(dirname "$0")/.."
 
-TSX="cli/node_modules/.bin/tsx"
+TSX="node_modules/.bin/tsx"
 
 echo "=== [1/4] Build WASM ==="
 bash scripts/build-wasm.sh

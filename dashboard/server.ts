@@ -4,6 +4,8 @@ import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
+import { SensorSimulator, PHASE_THRESHOLDS } from '../oracle/src/sensor-simulator.ts';
+import { MOCK_CONTRACTS } from './src/mock-contracts.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -17,6 +19,27 @@ app.use((_req, res, next) => {
 });
 
 app.options('/{*path}', (_req, res) => { res.sendStatus(204); });
+
+let contracts = [...MOCK_CONTRACTS];
+
+// ─── GET & POST /contracts ──────────────────────────────────────────────────
+app.get('/contracts', (req, res) => {
+  res.json(contracts);
+});
+
+app.post('/contracts', (req, res) => {
+  const newContract = req.body;
+  contracts.push(newContract);
+  res.json(newContract);
+});
+
+app.post('/contracts/:id/accept', (req, res) => {
+  const { id } = req.params;
+  contracts = contracts.map(c =>
+    c.id === id ? { ...c, status: 'active', fundsFrozen: c.totalAmount } : c
+  );
+  res.json({ success: true });
+});
 
 // ─── GET /state ───────────────────────────────────────────────────────────────
 
@@ -193,6 +216,47 @@ const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`NuclearEscrow API server running at http://localhost:${PORT}`);
   console.log(`  GET  /state`);
+  console.log(`  GET  /contracts`);
+  console.log(`  POST /contracts`);
   console.log(`  POST /deploy`);
   console.log(`  POST /milestone/:phase`);
 });
+
+// ─── Sensor Automation Cycle (1 Minute) ───────────────────────────────────────
+setInterval(() => {
+  console.log(`[Cron] Executing 1-minute sensor checking cycle...`);
+  for (let c of contracts) {
+    if (c.status === 'active' && c.currentPhase < 7) {
+      const sim = new SensorSimulator(c.facilityName);
+      // Advance sensor to match contract phase
+      for (let i = 0; i < c.currentPhase; i++) sim.advancePhase();
+
+      const batch = sim.getCurrentBatch();
+      const threshold = PHASE_THRESHOLDS[c.currentPhase];
+
+      if (batch.median < threshold) {
+        console.log(`[Cron] Contract ${c.id} passed phase ${c.currentPhase} sensor check (${batch.median} < ${threshold}). Releasing funds!`);
+
+        // Approve milestone and release 15% to company iteratively
+        const phaseAmount = Math.floor(c.totalAmount * 0.15);
+        c.fundsFrozen = Math.max(0, c.fundsFrozen - phaseAmount);
+        c.fundsRecovered += phaseAmount;
+        c.history.push({
+          timestamp: Date.now(),
+          radiationLevel: batch.median,
+          threshold: threshold,
+          passed: true,
+          amountToCompany: phaseAmount,
+          amountToGovernment: 0
+        });
+
+        c.currentPhase += 1;
+        if (c.currentPhase >= 7) {
+          c.status = 'completed';
+        }
+      } else {
+        console.log(`[Cron] Contract ${c.id} failed phase ${c.currentPhase} sensor check!`);
+      }
+    }
+  }
+}, 60000);

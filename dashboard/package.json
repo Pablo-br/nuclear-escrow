@@ -12,6 +12,7 @@
   "dependencies": {
     "@types/express": "^5.0.6",
     "express": "^5.2.1",
+    "lucide-react": "^0.577.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "xrpl": "^4.6.0"
