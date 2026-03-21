@@ -192,7 +192,8 @@ async function main() {
           result.txHash,
           Buffer.from(sensorHash).toString('hex'),
           parseInt(state.liability),
-          receiptClient
+          receiptClient,
+          contractor
         );
       } finally {
         await receiptClient.disconnect();
