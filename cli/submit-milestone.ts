@@ -20,6 +20,8 @@ import { fileURLToPath } from 'url';
 
 import { TESTNET_WS, loadWallets } from '../contracts/src/config.js';
 import { finishEscrow } from '../contracts/src/escrow-finish.js';
+import { spawnChildEscrows } from '../contracts/src/child-escrow-spawn.js';
+import { mintMilestoneReceipt } from '../contracts/src/mpt-receipt.js';
 import { SensorSimulator, PHASE_THRESHOLDS } from '../oracle/src/sensor-simulator.js';
 import { signAttestation } from '../oracle/src/attestation.js';
 import { QuorumAggregator } from '../oracle/src/quorum-aggregator.js';
@@ -70,7 +72,7 @@ async function main() {
   }
 
   // ── 2. Load oracle private keys from .env.testnet ────────────────────────
-  const { operator, oracles } = loadWallets();
+  const { regulator, operator, contractor, oracles } = loadWallets();
 
   // ── 3. Derive Ed25519 private keys (strip XRPL "ED" prefix) ──────────────
   const oraclePrivKeys = oracles.map(w =>
@@ -136,6 +138,59 @@ async function main() {
     state.current_milestone = phase + 1;
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
     console.log(`[State]   current_milestone is now ${state.current_milestone}`);
+
+    // ── 10. Spawn child escrows after M0 ───────────────────────────────────
+    if (phase === 0) {
+      console.log('\n[Spawn]   Spawning 6 child escrows...');
+      const childClient = new Client(TESTNET_WS);
+      await childClient.connect();
+      let childSeqs: number[];
+      try {
+        childSeqs = await spawnChildEscrows(
+          operator,
+          parseInt(state.liability),
+          {
+            facilityId,
+            oraclePubkeys: oracles.map(o => o.publicKey),
+            domainId: state.domainId,
+            contractorAddress: contractor.address,
+          },
+          childClient
+        );
+      } finally {
+        await childClient.disconnect();
+      }
+      console.log(`[Spawn]   Spawned 6 child escrows: [${childSeqs.join(', ')}]`);
+    }
+
+    // ── 11. Mint MPT milestone receipt ─────────────────────────────────────
+    try {
+      const receiptClient = new Client(TESTNET_WS);
+      await receiptClient.connect();
+      let issuanceId: string;
+      try {
+        issuanceId = await mintMilestoneReceipt(
+          regulator,
+          contractor.address,
+          phase,
+          facilityId,
+          result.txHash,
+          Buffer.from(sensorHash).toString('hex'),
+          parseInt(state.liability),
+          receiptClient
+        );
+      } finally {
+        await receiptClient.disconnect();
+      }
+      // Persist receipt ID to state
+      const freshState = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+      freshState.milestoneReceipts = freshState.milestoneReceipts ?? [];
+      freshState.milestoneReceipts.push(issuanceId);
+      fs.writeFileSync(statePath, JSON.stringify(freshState, null, 2));
+      console.log(`[Receipt] MPT receipt minted: ${issuanceId}`);
+    } catch (e: any) {
+      console.warn(`[Receipt] MPT mint skipped: ${e.message ?? e}`);
+    }
   } else {
     console.log(`[Result]  WASM returned 0 -> REJECTED: ${result.reason ?? 'unknown'}`);
     process.exit(1);
