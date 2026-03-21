@@ -64,12 +64,11 @@ export function MilestoneTimeline({ currentMilestone, milestoneHistory }: Props)
           {STEPS.map((step, i) => {
             const isCompleted = i < currentMilestone;
             const isActive    = i === currentMilestone;
-            const isLocked    = i > currentMilestone;
 
             let stepClass = 'milestone-step';
-            if (isCompleted) stepClass += ' milestone-step--completed';
-            else if (isActive) stepClass += ' milestone-step--active';
-            else stepClass += ' milestone-step--locked';
+            if (isCompleted)    stepClass += ' milestone-step--completed';
+            else if (isActive)  stepClass += ' milestone-step--active';
+            else                stepClass += ' milestone-step--locked';
 
             const event = historyMap.get(i);
             const showTooltip = activeTooltip === i;

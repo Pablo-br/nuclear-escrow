@@ -1,121 +1,112 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { useEscrowState } from './hooks/useEscrowState.ts';
+import { useMilestoneHistory } from './hooks/useMilestoneHistory.ts';
+import { SiteStatus } from './components/SiteStatus.tsx';
+import { EscrowBalance } from './components/EscrowBalance.tsx';
+import { MilestoneTimeline } from './components/MilestoneTimeline.tsx';
+import { OracleHealth } from './components/OracleHealth.tsx';
+import { AuditFeed } from './components/AuditFeed.tsx';
+import { BankruptcyGuard } from './components/BankruptcyGuard.tsx';
+import {
+  MOCK_ORACLES,
+  MOCK_YIELD_EARNED,
+} from './mock-data.ts';
 
-function App() {
-  const [count, setCount] = useState(0)
+interface NuclearState {
+  escrowOwner: string;
+  escrowSequence: number;
+}
+
+// Use relative paths — Vite proxies /state and /milestone to localhost:3001
+const SERVER = '';
+const isDemoMode = new URLSearchParams(window.location.search).get('demo') === '1';
+
+export default function App() {
+  const [nucState, setNucState] = useState<NuclearState | null>(null);
+  const [stateLoaded, setStateLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch(`${SERVER}/state`)
+      .then(r => {
+        if (!r.ok) throw new Error('not found');
+        return r.json() as Promise<NuclearState>;
+      })
+      .then(data => {
+        setNucState(data);
+        setStateLoaded(true);
+      })
+      .catch(() => {
+        setNucState({ escrowOwner: 'mock', escrowSequence: 0 });
+        setStateLoaded(true);
+      });
+  }, []);
+
+  const escrowOwner    = nucState?.escrowOwner    ?? 'mock';
+  const escrowSequence = nucState?.escrowSequence ?? 0;
+
+  const { siteState, escrowBalance, loading } = useEscrowState(escrowOwner, escrowSequence);
+  const { milestones } = useMilestoneHistory(escrowOwner);
+
+  const currentMilestone = siteState?.current_milestone ?? 1;
+
+  const runMilestone = async (phase: number) => {
+    const resp = await fetch(`${SERVER}/milestone/${phase}`, { method: 'POST' });
+    const text = await resp.text();
+    console.log(`[demo] milestone ${phase}:`, text);
+  };
+
+  if (!stateLoaded) {
+    return (
+      <div className="loading-msg" style={{ paddingTop: '80px' }}>
+        Connecting…
+      </div>
+    );
+  }
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+      <header className="app-header">
+        <span className="app-header__logo">☢ NuclearEscrow</span>
+        <span className="app-header__badge">XRPL Testnet</span>
+        <div className="app-header__spacer" />
+        <a
+          href={`https://testnet.xrpl.org/accounts/${escrowOwner}`}
+          target="_blank"
+          rel="noreferrer"
         >
-          Count is {count}
-        </button>
-      </section>
+          Explorer ↗
+        </a>
+      </header>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {isDemoMode && (
+        <div className="demo-bar">
+          <span className="demo-bar__label">Demo controls</span>
+          <button className="demo-btn" onClick={() => void runMilestone(0)}>Run M0</button>
+          <button className="demo-btn" onClick={() => void runMilestone(1)}>Run M1</button>
+          <button className="demo-btn" onClick={() => void runMilestone(2)}>Run M2</button>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      )}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+      <div className="app-grid">
+        <SiteStatus siteState={siteState} />
+
+        <div className="app-row app-row--2col">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <EscrowBalance
+              balance={loading ? '0' : escrowBalance}
+              yieldEarned={MOCK_YIELD_EARNED}
+            />
+            <OracleHealth oracles={MOCK_ORACLES} />
+          </div>
+          <MilestoneTimeline
+            currentMilestone={currentMilestone}
+            milestoneHistory={milestones}
+          />
+        </div>
+
+        <AuditFeed escrowOwner={escrowOwner} />
+        <BankruptcyGuard />
+      </div>
     </>
-  )
+  );
 }
-
-export default App
