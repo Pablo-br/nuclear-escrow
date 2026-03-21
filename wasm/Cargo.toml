@@ -4,9 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 borsh = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
+hex = "0.4"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
