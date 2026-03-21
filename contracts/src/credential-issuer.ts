@@ -18,7 +18,8 @@ async function createCredential(
     CredentialType: toHex(credentialType),
   };
   if (credentialData !== undefined) {
-    tx.CredentialData = toHex(credentialData);
+    // xrpl.js v4 uses "URI" for optional credential data blob
+    tx.URI = toHex(credentialData);
   }
 
   const prepared = await client.autofill(tx);
@@ -27,6 +28,20 @@ async function createCredential(
 
   const meta = (result.result as any).meta ?? (result.result as any).metaData;
   const txResult = meta?.TransactionResult;
+
+  if (txResult === 'tecDUPLICATE') {
+    // Credential already exists — look it up on-ledger
+    const entry = await (client as any).request({
+      command: 'ledger_entry',
+      credential: {
+        issuer: regulatorWallet.address,
+        subject: subjectAddress,
+        credential_type: toHex(credentialType),
+      },
+    });
+    return (entry.result as any).index as string;
+  }
+
   if (txResult !== 'tesSUCCESS') {
     throw new Error(`CredentialCreate failed: ${txResult}`);
   }

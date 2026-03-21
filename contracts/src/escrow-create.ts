@@ -2,6 +2,7 @@ import { Client, Wallet } from 'xrpl';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { createHash } from 'crypto';
 import { encodeSiteState, facilityIdToBytes } from '../../shared/src/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -30,7 +31,7 @@ export async function createMasterEscrow(
   config: EscrowConfig,
   client: Client
 ): Promise<number> {
-  // 1. Read WASM, convert to hex
+  // 1. Read WASM, compute SHA-256 hash (store hash on-chain as commitment)
   const wasmPath = path.resolve(__dirname, '../wasm/finish.wasm');
   const wasmBuffer = fs.readFileSync(wasmPath);
   const wasmHex = wasmBuffer.toString('hex').toUpperCase();
@@ -38,7 +39,9 @@ export async function createMasterEscrow(
   if (wasmHex.length > 200000) {
     throw new Error(`WASM too large: ${wasmBuffer.length} bytes`);
   }
+  const wasmHash = createHash('sha256').update(wasmBuffer).digest('hex').toUpperCase();
   console.log(`WASM size: ${wasmBuffer.length} bytes (${wasmHex.length} hex chars)`);
+  console.log(`WASM SHA-256: ${wasmHash}`);
 
   // 2. Build SiteState using encodeSiteState
   const oracle_pubkeys = config.oraclePubkeys.map(hex => {
@@ -72,17 +75,22 @@ export async function createMasterEscrow(
   //    is not yet in standard xrpl.js types.
   const amountDrops = String(parseInt(config.liabilityRlusd));
 
+  // FinishAfter = now + 10s (escrow becomes finishable almost immediately for demo)
+  const finishAfter = toRippleTime(Date.now() / 1000 + 10);
+
   const tx: any = {
     TransactionType: 'EscrowCreate',
     Account: operatorWallet.address,
     Amount: amountDrops,
     Destination: config.contractorAddress,
+    FinishAfter: finishAfter,
     CancelAfter: cancelAfter,
     Memos: [
       {
+        // WASM hash stored as commitment (full bytecode stored off-chain / in contracts/wasm/)
         Memo: {
-          MemoType: toMemoHex('FinishFunction'),
-          MemoData: wasmHex,
+          MemoType: toMemoHex('FinishFunctionHash'),
+          MemoData: wasmHash,
         },
       },
       {
@@ -110,7 +118,9 @@ export async function createMasterEscrow(
     throw new Error(`EscrowCreate failed: ${txResult}`);
   }
 
-  const sequence: number = (result.result as any).Sequence;
-  console.log(`Escrow created: sequence=${sequence}`);
+  const res = result.result as any;
+  // xrpl.js v4 may store tx fields at root or under tx_json
+  const sequence: number = res.Sequence ?? res.tx_json?.Sequence ?? res.seq;
+  console.log(`Escrow created: sequence=${sequence}, hash=${res.hash ?? res.tx_json?.hash}`);
   return sequence;
 }
