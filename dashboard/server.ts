@@ -60,6 +60,67 @@ app.post('/xrpl-rpc', (req, res) => {
   proxy.end();
 });
 
+// ─── GET /audit — recent on-chain events for operator + regulator ─────────────
+
+function xrplAccountTx(account: string): Promise<unknown[]> {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      method: 'account_tx',
+      params: [{ account, limit: 50, ledger_index_min: -1, ledger_index_max: -1 }],
+    });
+    const opts = {
+      hostname: 's.altnet.rippletest.net',
+      port: 51234,
+      path: '/',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    };
+    const req = https.request(opts, (upstream) => {
+      let data = '';
+      upstream.on('data', (chunk: Buffer) => { data += chunk; });
+      upstream.on('end', () => {
+        try { resolve((JSON.parse(data).result?.transactions as unknown[]) ?? []); }
+        catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.write(body);
+    req.end();
+  });
+}
+
+app.get('/audit', async (_req, res) => {
+  try {
+    const statePath = join(__dirname, '..', '.nuclear-state.json');
+    const state = JSON.parse(await readFile(statePath, 'utf-8'));
+    const accounts: string[] = [
+      state.escrowOwner,
+      state.wallets?.regulator?.address,
+    ].filter(Boolean) as string[];
+
+    const all = (await Promise.all(accounts.map(xrplAccountTx))).flat() as Array<Record<string, unknown>>;
+
+    // deduplicate by hash, sort newest first
+    const seen = new Set<string>();
+    const deduped = all.filter(e => {
+      const tx = (e.tx ?? e.transaction ?? {}) as Record<string, unknown>;
+      const hash = tx.hash as string | undefined;
+      if (!hash || seen.has(hash)) return false;
+      seen.add(hash);
+      return true;
+    });
+    deduped.sort((a, b) => {
+      const txA = (a.tx ?? a.transaction ?? {}) as Record<string, unknown>;
+      const txB = (b.tx ?? b.transaction ?? {}) as Record<string, unknown>;
+      return (Number(txB.date ?? 0)) - (Number(txA.date ?? 0));
+    });
+
+    res.json(deduped.slice(0, 100));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── POST /milestone/:phase ───────────────────────────────────────────────────
 
 app.post('/milestone/:phase', (req, res) => {

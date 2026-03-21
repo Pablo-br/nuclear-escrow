@@ -33,9 +33,9 @@ function decodeSiteState(hex: string): SiteState {
   const facility_id = bytes.slice(offset, offset + 16);
   offset += 16;
 
-  const milestone_timestamps: bigint[] = [];
+  const milestone_timestamps: number[] = [];
   for (let i = 0; i < 7; i++) {
-    milestone_timestamps.push(view.getBigUint64(offset, true));
+    milestone_timestamps.push(Number(view.getBigUint64(offset, true)));
     offset += 8;
   }
 

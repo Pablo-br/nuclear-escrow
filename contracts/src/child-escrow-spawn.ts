@@ -46,8 +46,13 @@ export async function spawnChildEscrows(
 
   const sequences: number[] = [];
 
+  // Fixed small demo collateral per child escrow (testnet wallets are capped at ~100 XRP).
+  // The real RLUSD allocation per phase is recorded in the LiabilityRlusd memo below.
+  const DEMO_CHILD_COLLATERAL_DROPS = 100000; // 0.1 XRP per child
+
   for (let phase = 1; phase <= 6; phase++) {
-    const amount = Math.floor(totalRlusd * MILESTONE_FUND_PCT[phase] / 100);
+    const rlusdAmount = Math.floor(totalRlusd * MILESTONE_FUND_PCT[phase] / 100);
+    const amount = DEMO_CHILD_COLLATERAL_DROPS;
 
     // SiteState for this child escrow: current_milestone = phase - 1
     // WASM check_sequence: attest.milestone_index == state.current_milestone + 1
@@ -81,6 +86,12 @@ export async function spawnChildEscrows(
             MemoData: Buffer.from([phase]).toString('hex').toUpperCase(),
           },
         },
+        {
+          Memo: {
+            MemoType: toMemoHex('LiabilityRlusd'),
+            MemoData: Buffer.from(String(rlusdAmount), 'utf-8').toString('hex').toUpperCase(),
+          },
+        },
       ],
     };
 
@@ -96,7 +107,7 @@ export async function spawnChildEscrows(
     const res = result.result as any;
     const sequence: number = res.Sequence ?? res.tx_json?.Sequence;
     console.log(
-      `  Phase ${phase}: seq=${sequence}  amount=${amount} drops (${MILESTONE_FUND_PCT[phase]}%)`
+      `  Phase ${phase}: seq=${sequence}  ${rlusdAmount.toLocaleString()} RLUSD (${MILESTONE_FUND_PCT[phase]}%)`
     );
     sequences.push(sequence);
   }

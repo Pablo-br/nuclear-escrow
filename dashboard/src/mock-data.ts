@@ -6,7 +6,7 @@ export interface SiteState {
   thresholds: number[];
   domain_id: Uint8Array;
   facility_id: Uint8Array;
-  milestone_timestamps: bigint[];
+  milestone_timestamps: number[];
 }
 
 export interface OracleNode {
@@ -53,9 +53,9 @@ export const MOCK_SITE_STATE: SiteState = {
   domain_id: new Uint8Array(32),
   facility_id: facilityIdBytes('PLANT-FR-001'),
   milestone_timestamps: [
-    BigInt(Math.floor((now - 3_600_000) / 1000)),
-    BigInt(Math.floor((now - 1_800_000) / 1000)),
-    0n, 0n, 0n, 0n, 0n,
+    Math.floor((now - 3_600_000) / 1000),
+    Math.floor((now - 1_800_000) / 1000),
+    0, 0, 0, 0, 0,
   ],
 };
 

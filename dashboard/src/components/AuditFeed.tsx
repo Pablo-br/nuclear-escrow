@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
-import { Client } from 'xrpl';
+import { useState, useEffect } from 'react';
 import { type AuditEvent, MOCK_AUDIT_EVENTS } from '../mock-data.ts';
 
 interface Props {
@@ -45,27 +44,23 @@ function classifyTx(tx: Record<string, unknown>, meta: Record<string, unknown>):
   if (type === 'EscrowFinish') {
     const result = (meta.TransactionResult as string | undefined) ?? '';
     const success = result === 'tesSUCCESS';
-    const delivered = (meta.delivered_amount as string | undefined) ?? '0';
-    const memos = (tx.Memos as Array<{ Memo?: { MemoData?: string } }> | undefined) ?? [];
-    let milestoneIdx = '?';
-    for (const m of memos) {
-      const data = m.Memo?.MemoData;
-      if (data) {
-        try {
-          const decoded = decodeURIComponent(data.replace(/../g, '%$&'));
-          const parsed: unknown = JSON.parse(decoded);
-          if (typeof parsed === 'object' && parsed !== null && 'milestone' in parsed) {
-            milestoneIdx = String((parsed as { milestone: unknown }).milestone);
-          }
-        } catch { /* skip */ }
+    // Extract amount from the deleted Escrow ledger object
+    const affectedNodes = (meta.AffectedNodes as Array<Record<string, unknown>> | undefined) ?? [];
+    let escapedDrops = '0';
+    for (const node of affectedNodes) {
+      const deleted = node.DeletedNode as Record<string, unknown> | undefined;
+      if (deleted?.LedgerEntryType === 'Escrow') {
+        const fields = (deleted.FinalFields ?? deleted.NewFields) as Record<string, unknown> | undefined;
+        escapedDrops = String(fields?.Amount ?? '0');
+        break;
       }
     }
     return {
       timestamp: date,
       eventType: 'EscrowFinish',
       detail: success
-        ? `Milestone ${milestoneIdx} COMPLETE — ${Number(delivered).toLocaleString()} RLUSD released`
-        : `Milestone ${milestoneIdx} REJECTED by WASM`,
+        ? `Milestone COMPLETE — ${Number(escapedDrops).toLocaleString()} drops released`
+        : `Milestone REJECTED by WASM`,
       txHash: hash,
     };
   }
@@ -73,8 +68,8 @@ function classifyTx(tx: Record<string, unknown>, meta: Record<string, unknown>):
   if (type === 'MPTokenIssuanceCreate') {
     return {
       timestamp: date,
-      eventType: 'MPTokenIssuanceCreate',
-      detail: 'Receipt MPT minted for contractor',
+      eventType: 'Receipt Minted',
+      detail: 'Milestone receipt (MPT) issued to contractor',
       txHash: hash,
     };
   }
@@ -84,68 +79,32 @@ function classifyTx(tx: Record<string, unknown>, meta: Record<string, unknown>):
 
 export function AuditFeed({ escrowOwner }: Props) {
   const [events, setEvents] = useState<AuditEvent[]>([...MOCK_AUDIT_EVENTS].reverse());
-  const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
     if (escrowOwner === 'mock') return;
 
-    const client = new Client('wss://s.altnet.rippletest.net:51233');
-    clientRef.current = client;
     let active = true;
 
-    const run = async () => {
-      try {
-        await client.connect();
-
-        // Load recent history first
-        const resp = await client.request({
-          command: 'account_tx',
-          account: escrowOwner,
-          limit: 50,
-          ledger_index_min: -1,
-          ledger_index_max: -1,
-        });
-
-        if (!active) return;
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const txList: any[] = (resp.result as any).transactions ?? [];
-        const initial: AuditEvent[] = [];
-
-        for (const entry of txList) {
-          const tx = entry.tx ?? entry.transaction ?? {};
-          const meta = entry.meta ?? entry.metaData ?? {};
-          const ev = classifyTx(tx as Record<string, unknown>, meta as Record<string, unknown>);
-          if (ev) initial.push(ev);
-        }
-
-        if (active) {
-          setEvents(initial.length > 0 ? initial : [...MOCK_AUDIT_EVENTS].reverse());
-        }
-
-        // Subscribe to live transactions
-        await client.request({ command: 'subscribe', accounts: [escrowOwner] });
-
-        client.on('transaction', (data) => {
+    const load = () => {
+      fetch('/audit')
+        .then(r => r.json())
+        .then((entries: Array<Record<string, unknown>>) => {
           if (!active) return;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const tx = (data as any).transaction ?? {};
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const meta = (data as any).meta ?? {};
-          const ev = classifyTx(tx as Record<string, unknown>, meta as Record<string, unknown>);
-          if (ev) setEvents(prev => [ev, ...prev].slice(0, 100));
-        });
-      } catch {
-        // silently keep mock events on connection failure
-      }
+          const parsed: AuditEvent[] = [];
+          for (const entry of entries) {
+            const tx = (entry.tx ?? entry.transaction ?? {}) as Record<string, unknown>;
+            const meta = (entry.meta ?? entry.metaData ?? {}) as Record<string, unknown>;
+            const ev = classifyTx(tx, meta);
+            if (ev) parsed.push(ev);
+          }
+          if (parsed.length > 0) setEvents(parsed);
+        })
+        .catch(() => { /* keep current events */ });
     };
 
-    void run();
-
-    return () => {
-      active = false;
-      void client.disconnect();
-    };
+    load();
+    const id = setInterval(load, 4000);
+    return () => { active = false; clearInterval(id); };
   }, [escrowOwner]);
 
   return (

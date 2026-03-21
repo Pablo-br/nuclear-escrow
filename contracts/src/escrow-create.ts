@@ -70,10 +70,12 @@ export async function createMasterEscrow(
   const cancelAfter = toRippleTime(Date.now() / 1000 + 2524608000);
 
   // 4. EscrowCreate transaction
-  //    Amount uses XRP drops (demo substitute for RLUSD).
-  //    WASM and SiteState stored in Memos since EscrowCreate FinishFunction
-  //    is not yet in standard xrpl.js types.
-  const amountDrops = String(parseInt(config.liabilityRlusd));
+  //    Real RLUSD liquidity is tracked in SiteState + OperatingLicense credential.
+  //    The locked XRP is a fixed demo collateral (testnet faucet wallets top out at ~100 XRP,
+  //    so we cannot lock liability-scale drops).  The true RLUSD figure is recorded in the
+  //    LiabilityRlusd memo below so it is fully auditable on-chain.
+  const DEMO_COLLATERAL_DROPS = '1000000'; // 1 XRP
+  const amountDrops = DEMO_COLLATERAL_DROPS;
 
   // FinishAfter = now + 30s (gives enough ledger closes before the first EscrowFinish)
   const finishAfter = toRippleTime(Date.now() / 1000 + 30);
@@ -103,6 +105,12 @@ export async function createMasterEscrow(
         Memo: {
           MemoType: toMemoHex('DomainId'),
           MemoData: config.domainId.toUpperCase(),
+        },
+      },
+      {
+        Memo: {
+          MemoType: toMemoHex('LiabilityRlusd'),
+          MemoData: Buffer.from(config.liabilityRlusd, 'utf-8').toString('hex').toUpperCase(),
         },
       },
     ],

@@ -142,7 +142,7 @@ async function main() {
   console.log(`║  Escrow Owner:       ${operator.address.padEnd(41)} ║`);
   console.log(`║  Escrow Sequence:    ${String(escrowSequence).padEnd(41)} ║`);
   console.log(`║  Contractor:         ${contractor.address.padEnd(41)} ║`);
-  console.log(`║  Liability:          ${(liability + ' drops XRP').padEnd(41)} ║`);
+  console.log(`║  Liability:          ${(liability + ' RLUSD').padEnd(41)} ║`);
   console.log('╠══════════════════════════════════════════════════════════════╣');
   console.log('║  Credentials                                                  ║');
   console.log(`║    OperatingLicense: ${opLicenseId.slice(0, 41).padEnd(41)} ║`);
