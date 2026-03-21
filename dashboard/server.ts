@@ -121,6 +121,36 @@ app.get('/audit', async (_req, res) => {
   }
 });
 
+// ─── POST /deploy — full reset + facility init ────────────────────────────────
+
+app.post('/deploy', (_req, res) => {
+  const projectRoot = join(__dirname, '..');
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+
+  const child = spawn('bash', ['scripts/full-reset.sh'], {
+    cwd: projectRoot,
+    env: { ...process.env },
+  });
+
+  child.stdout.on('data', (chunk: Buffer) => {
+    res.write(chunk.toString());
+  });
+
+  child.stderr.on('data', (chunk: Buffer) => {
+    res.write('[stderr] ' + chunk.toString());
+  });
+
+  child.on('close', (code) => {
+    res.end(`\n[exit ${code}]`);
+  });
+
+  child.on('error', (err) => {
+    res.end(`\n[spawn error] ${err.message}`);
+  });
+});
+
 // ─── POST /milestone/:phase ───────────────────────────────────────────────────
 
 app.post('/milestone/:phase', (req, res) => {
@@ -163,5 +193,6 @@ const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`NuclearEscrow API server running at http://localhost:${PORT}`);
   console.log(`  GET  /state`);
+  console.log(`  POST /deploy`);
   console.log(`  POST /milestone/:phase`);
 });

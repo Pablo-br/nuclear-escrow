@@ -7,6 +7,7 @@ import { MilestoneTimeline } from './components/MilestoneTimeline.tsx';
 import { OracleHealth } from './components/OracleHealth.tsx';
 import { AuditFeed } from './components/AuditFeed.tsx';
 import { BankruptcyGuard } from './components/BankruptcyGuard.tsx';
+import { TerminalModal } from './components/TerminalModal.tsx';
 import {
   MOCK_ORACLES,
   MOCK_YIELD_EARNED,
@@ -20,9 +21,19 @@ interface NuclearState {
   childEscrows: number[];
 }
 
-// Use relative paths — Vite proxies /state and /milestone to localhost:3001
+// Use relative paths — Vite proxies /state, /milestone, /deploy to localhost:3001
 const SERVER = '';
 const isDemoMode = new URLSearchParams(window.location.search).get('demo') === '1';
+
+const MILESTONE_NAMES = [
+  'Reactor Shutdown',
+  'Defueling',
+  'Site Decontamination',
+  'Waste Processing',
+  'Infrastructure Removal',
+  'Environmental Monitoring',
+  'Site Release',
+];
 
 const FALLBACK_STATE: NuclearState = {
   escrowOwner: 'mock',
@@ -35,6 +46,8 @@ const FALLBACK_STATE: NuclearState = {
 export default function App() {
   const [nucState, setNucState] = useState<NuclearState | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
+  const [modalConfig, setModalConfig] = useState<{ url: string; title: string } | null>(null);
+  const isRunning = modalConfig !== null;
 
   useEffect(() => {
     let active = true;
@@ -76,11 +89,16 @@ export default function App() {
   // Prefer on-chain siteState; fall back to server file state when master escrow is gone
   const currentMilestone = siteState?.current_milestone ?? nucState?.current_milestone ?? 0;
 
-  const runMilestone = async (phase: number) => {
-    const resp = await fetch(`${SERVER}/milestone/${phase}`, { method: 'POST' });
-    const text = await resp.text();
-    console.log(`[demo] milestone ${phase}:`, text);
-  };
+  const handleStartDemo = () =>
+    setModalConfig({ url: `${SERVER}/deploy`, title: 'Full Reset — Funding wallets & deploying escrow…' });
+
+  const handleNextStep = () =>
+    setModalConfig({
+      url: `${SERVER}/milestone/${currentMilestone}`,
+      title: `M${currentMilestone}: ${MILESTONE_NAMES[currentMilestone] ?? `Phase ${currentMilestone}`}`,
+    });
+
+  const handleModalClose = () => setModalConfig(null);
 
   if (!stateLoaded) {
     return (
@@ -108,9 +126,20 @@ export default function App() {
       {isDemoMode && (
         <div className="demo-bar">
           <span className="demo-bar__label">Demo controls</span>
-          <button className="demo-btn" onClick={() => void runMilestone(0)}>Run M0</button>
-          <button className="demo-btn" onClick={() => void runMilestone(1)}>Run M1</button>
-          <button className="demo-btn" onClick={() => void runMilestone(2)}>Run M2</button>
+          <button className="demo-btn" onClick={handleStartDemo} disabled={isRunning}>
+            Start Demo
+          </button>
+          {currentMilestone <= 6 ? (
+            <button
+              className="demo-btn demo-btn--primary"
+              onClick={handleNextStep}
+              disabled={isRunning}
+            >
+              Next Step: M{currentMilestone} — {MILESTONE_NAMES[currentMilestone]}
+            </button>
+          ) : (
+            <span className="demo-bar__done">Demo Complete ✓</span>
+          )}
         </div>
       )}
 
@@ -134,6 +163,14 @@ export default function App() {
         <AuditFeed escrowOwner={escrowOwner} />
         <BankruptcyGuard />
       </div>
+
+      {modalConfig && (
+        <TerminalModal
+          url={modalConfig.url}
+          title={modalConfig.title}
+          onClose={handleModalClose}
+        />
+      )}
     </>
   );
 }
