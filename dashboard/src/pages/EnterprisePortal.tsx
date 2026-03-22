@@ -41,6 +41,9 @@ export function EnterprisePortal() {
   // Deploy state
   const [deploying, setDeploying] = useState(false);
   const [deployedInstance, setDeployedInstance] = useState<ContractInstance | null>(null);
+  const [enterpriseSeed, setEnterpriseSeed] = useState('');
+  const [locking, setLocking] = useState(false);
+  const [escrowResult, setEscrowResult] = useState<{ txHash: string; sequence: number } | null>(null);
 
   // ── Fetch templates on mount ──────────────────────────────────────────────
 
@@ -64,6 +67,8 @@ export function EnterprisePortal() {
     setForm(prev => ({
       ...prev,
       thresholds: Array.from({ length: t.periods }, () => 0),
+      contractorAddress: t.contractorAddress ?? '',
+      regulatorAddress: t.governmentAddress ?? '',
     }));
     setChatMessages([{
       role: 'assistant',
@@ -139,6 +144,26 @@ export function EnterprisePortal() {
       setError(e.message ?? String(e));
     } finally {
       setDeploying(false);
+    }
+  };
+
+  const handleLockFunds = async () => {
+    if (!deployedInstance || !enterpriseSeed.trim()) return;
+    setLocking(true);
+    setError('');
+    try {
+      const resp = await fetch(`/contracts/${deployedInstance.id}/lock-escrow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enterpriseSeed }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const result = await resp.json() as { txHash: string; sequence: number };
+      setEscrowResult(result);
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    } finally {
+      setLocking(false);
     }
   };
 
@@ -226,12 +251,36 @@ export function EnterprisePortal() {
                 <input className="portal-input" placeholder="rEnterprise..." value={form.enterpriseAddress} onChange={e => setForm(p => ({ ...p, enterpriseAddress: e.target.value }))} />
               </div>
               <div className="form-row">
-                <label className="form-row__label">Contractor XRPL Address <span className="form-row__hint">Penalty pool recipient</span></label>
-                <input className="portal-input" placeholder="rContractor..." value={form.contractorAddress} onChange={e => setForm(p => ({ ...p, contractorAddress: e.target.value }))} />
+                <label className="form-row__label">
+                  Contractor XRPL Address
+                  {selectedTemplate.contractorAddress
+                    ? <span className="form-row__hint">🔒 from template</span>
+                    : <span className="form-row__hint">Penalty pool recipient</span>}
+                </label>
+                <input
+                  className="portal-input"
+                  placeholder="rContractor..."
+                  value={form.contractorAddress}
+                  readOnly={!!selectedTemplate.contractorAddress}
+                  onChange={e => setForm(p => ({ ...p, contractorAddress: e.target.value }))}
+                  style={selectedTemplate.contractorAddress ? { opacity: 0.7, cursor: 'not-allowed' } : undefined}
+                />
               </div>
               <div className="form-row">
-                <label className="form-row__label">Regulator XRPL Address <span className="form-row__hint">Issues credentials</span></label>
-                <input className="portal-input" placeholder="rRegulator..." value={form.regulatorAddress} onChange={e => setForm(p => ({ ...p, regulatorAddress: e.target.value }))} />
+                <label className="form-row__label">
+                  Government XRPL Address
+                  {selectedTemplate.governmentAddress
+                    ? <span className="form-row__hint">🔒 from template</span>
+                    : <span className="form-row__hint">Issues credentials</span>}
+                </label>
+                <input
+                  className="portal-input"
+                  placeholder="rGovernment..."
+                  value={form.regulatorAddress}
+                  readOnly={!!selectedTemplate.governmentAddress}
+                  onChange={e => setForm(p => ({ ...p, regulatorAddress: e.target.value }))}
+                  style={selectedTemplate.governmentAddress ? { opacity: 0.7, cursor: 'not-allowed' } : undefined}
+                />
               </div>
 
               <div className="form-section-title">Financial Terms</div>
@@ -324,13 +373,13 @@ export function EnterprisePortal() {
         </div>
       )}
 
-      {/* ── Deployed ──────────────────────────────────────────────────────── */}
+      {/* ── Deploy ────────────────────────────────────────────────────────── */}
       {step === 'deploy' && deployedInstance && (
-        <div className="portal-card portal-card--success">
-          <div className="success-icon">✓</div>
-          <h2>Contract Created</h2>
-          <p>Your compliance contract has been saved. Next step: fund and deploy escrows on XRPL.</p>
-          <div className="template-summary">
+        <div className="portal-card">
+          <h2>Lock Funds on XRPL</h2>
+          <p className="field-hint">Contract saved. Enter your XRPL seed to create the on-chain escrow and lock your funds.</p>
+
+          <div className="template-summary" style={{ marginBottom: '20px' }}>
             <div className="template-summary__row">
               <span>Contract ID</span><code>{deployedInstance.id}</code>
             </div>
@@ -349,16 +398,61 @@ export function EnterprisePortal() {
               <span className="badge badge--red">{Number(deployedInstance.penaltyPool).toLocaleString()} RLUSD → Contractor</span>
             </div>
             <div className="template-summary__row">
-              <span>Periods</span>
-              <span>{deployedInstance.template.periods} × {deployedInstance.template.periodLengthDays} days</span>
+              <span>Escrow Destination</span><code>{deployedInstance.regulatorAddress}</code>
             </div>
           </div>
-          <a
-            className="portal-btn portal-btn--primary"
-            href={`/contract/${deployedInstance.id}`}
-          >
-            View Compliance Dashboard →
-          </a>
+
+          {!escrowResult ? (
+            <>
+              <div className="form-row">
+                <label className="form-row__label">
+                  Enterprise XRPL Seed
+                  <span className="form-row__hint">Demo only — seed is used server-side to sign the EscrowCreate tx</span>
+                </label>
+                <input
+                  className="portal-input"
+                  type="password"
+                  placeholder="sEd... or s..."
+                  value={enterpriseSeed}
+                  onChange={e => setEnterpriseSeed(e.target.value)}
+                  disabled={locking}
+                />
+              </div>
+              <div className="portal-actions">
+                <button
+                  className="portal-btn portal-btn--primary"
+                  onClick={handleLockFunds}
+                  disabled={locking || !enterpriseSeed.trim()}
+                >
+                  {locking ? 'Submitting to XRPL…' : 'Lock Funds on XRPL →'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="escrow-success">
+              <div className="success-icon" style={{ fontSize: '32px', marginBottom: '8px' }}>✓</div>
+              <p><strong>Escrow created on XRPL testnet</strong></p>
+              <div className="template-summary">
+                <div className="template-summary__row">
+                  <span>Escrow Sequence</span><code>{escrowResult.sequence}</code>
+                </div>
+                <div className="template-summary__row">
+                  <span>Transaction</span>
+                  <a
+                    href={`https://testnet.xrpl.org/transactions/${escrowResult.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="tx-link"
+                  >
+                    {escrowResult.txHash.slice(0, 16)}… ↗
+                  </a>
+                </div>
+              </div>
+              <a className="portal-btn portal-btn--primary" href={`/contract/${deployedInstance.id}`} style={{ marginTop: '16px', display: 'inline-block' }}>
+                View Compliance Dashboard →
+              </a>
+            </div>
+          )}
         </div>
       )}
     </div>

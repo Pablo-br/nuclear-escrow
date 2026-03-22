@@ -219,8 +219,7 @@ Number of oracles: ${oracleData.length} (quorum required: ${template.quorumRequi
 export async function* streamDraftTemplate(description: string): AsyncGenerator<string> {
   const systemPrompt = `You are an expert regulatory contract designer working for a government agency.
 Convert the following natural-language description into a filled-in contract template form.
-First, briefly acknowledge what you understood (1-2 sentences), then output the JSON.
-Wrap the JSON in a \`\`\`json code block so the UI can parse it.
+Output ONLY the JSON wrapped in a \`\`\`json code block. No preamble or explanation.
 
 The JSON must match this structure:
 {
@@ -247,7 +246,7 @@ The JSON must match this structure:
 
   const stream = client.messages.stream({
     model: MODEL,
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: 'user', content: description }],
   });

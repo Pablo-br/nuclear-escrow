@@ -1300,36 +1300,47 @@ code {
   white-space: nowrap;
 }
 
-/* ─── Stream output ──────────────────────────────────────────────────────────── */
-.stream-output {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  overflow: hidden;
-  margin: 12px 0;
+/* ─── Preset picker grid ─────────────────────────────────────────────────────── */
+.preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
 }
 
-.stream-output__label {
-  background: #161b22;
-  border-bottom: 1px solid #30363d;
-  padding: 8px 14px;
-  font-size: 12px;
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.preset-card:hover {
+  border-color: var(--c-teal);
+  background: rgba(0, 210, 190, 0.05);
+}
+
+.preset-card__icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.preset-card__label {
+  font-size: 15px;
   font-weight: 600;
-  color: #58a6ff;
-  font-family: var(--mono);
+  color: var(--c-text);
 }
 
-.stream-output__content {
-  padding: 14px;
-  font-family: var(--mono);
+.preset-card__hint {
   font-size: 12px;
-  line-height: 1.6;
-  color: #b1bac4;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 320px;
-  overflow-y: auto;
-  margin: 0;
+  color: var(--c-muted);
 }
 
 /* ─── Empty state ────────────────────────────────────────────────────────────── */

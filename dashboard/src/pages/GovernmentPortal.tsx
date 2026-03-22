@@ -1,67 +1,116 @@
 import { useState } from 'react';
 import type { ContractTemplate } from '../../../shared/src/contract-template.js';
 
+// ─── Preset templates ─────────────────────────────────────────────────────────
+
+function makeDistribution(periods: number): number[] {
+  const even = Math.floor(100 / periods);
+  const remainder = 100 - even * periods;
+  return Array.from({ length: periods }, (_, i) => (i < remainder ? even + 1 : even));
+}
+
+const BASE = {
+  complianceIsBelow: true,
+  periods: 12,
+  periodLengthDays: 30,
+  oracleCount: 5,
+  quorumRequired: 3,
+  compliancePoolPct: 60,
+  penaltyPoolPct: 40,
+  violationBehavior: 'period_slice' as const,
+  createdBy: 'government-portal',
+};
+
+const PRESETS: Array<{ icon: string; label: string; hint: string; template: Omit<ContractTemplate, 'id' | 'createdAt'> }> = [
+  {
+    icon: '☢',
+    label: 'Nuclear Radiation',
+    hint: 'µSv/h readings below safe threshold',
+    template: {
+      ...BASE,
+      name: 'Nuclear Facility Radiation Monitoring',
+      description: 'Monthly radiation level compliance for nuclear facilities. Readings must stay below the permitted µSv/h threshold.',
+      industry: 'nuclear',
+      metricType: 'radiation_usv',
+      metricUnit: 'µSv/h',
+      metricDescription: 'Ambient radiation level measured in microsieverts per hour',
+      oracleCredentialType: 'RadiationInspector',
+      periodDistribution: makeDistribution(12),
+    },
+  },
+  {
+    icon: '🏭',
+    label: 'CO2 Emissions',
+    hint: 'Tons CO2/month below quota',
+    template: {
+      ...BASE,
+      name: 'CO2 Emissions Compliance',
+      description: 'Monthly CO2 emissions compliance for manufacturing. Enterprises must stay below their allocated quota of CO2 tons per month.',
+      industry: 'manufacturing',
+      metricType: 'co2_tons',
+      metricUnit: 'tons CO2/month',
+      metricDescription: 'Total CO2 emissions measured in metric tons per month',
+      oracleCredentialType: 'EnvironmentalAuditor',
+      periodDistribution: makeDistribution(12),
+    },
+  },
+  {
+    icon: '💧',
+    label: 'Wastewater Quality',
+    hint: 'Contaminant mg/L below permitted limit',
+    template: {
+      ...BASE,
+      name: 'Wastewater Quality Compliance',
+      description: 'Monthly wastewater quality compliance for industrial facilities. Contaminant levels must remain below the permitted mg/L limit.',
+      industry: 'water',
+      metricType: 'wastewater_ppm',
+      metricUnit: 'mg/L',
+      metricDescription: 'Contaminant concentration in wastewater measured in milligrams per litre',
+      oracleCredentialType: 'WaterQualityInspector',
+      periodDistribution: makeDistribution(12),
+    },
+  },
+  {
+    icon: '🔊',
+    label: 'Noise Pollution',
+    hint: 'dB levels below permitted maximum',
+    template: {
+      ...BASE,
+      name: 'Noise Pollution Compliance',
+      description: 'Monthly noise level compliance for industrial sites. Ambient noise must stay below the permitted decibel threshold.',
+      industry: 'manufacturing',
+      metricType: 'noise_db',
+      metricUnit: 'dB',
+      metricDescription: 'Ambient noise level measured in decibels',
+      oracleCredentialType: 'AcousticEngineer',
+      periodDistribution: makeDistribution(12),
+    },
+  },
+];
+
 // ─── GovernmentPortal ────────────────────────────────────────────────────────
 // Government regulators use this page to:
-//   1. Describe a contract type in plain language
-//   2. Claude AI generates a structured template
-//   3. Government reviews / edits fields
-//   4. Publishes the template for enterprises to use
+//   1. Pick a preset contract type
+//   2. Review / edit fields
+//   3. Publish the template for enterprises to use
 
 export function GovernmentPortal() {
-  const [step, setStep] = useState<'describe' | 'review' | 'published'>('describe');
-  const [description, setDescription] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [streamOutput, setStreamOutput] = useState('');
+  const [step, setStep] = useState<'pick' | 'review' | 'published'>('pick');
   const [template, setTemplate] = useState<ContractTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // ── Step 1: Stream Claude's response, then extract JSON ──────────────────
+  // ── Step 1: Select a preset ───────────────────────────────────────────────
 
-  const handleGenerate = async () => {
-    if (!description.trim()) return;
-    setStreaming(true);
-    setStreamOutput('');
-    setError('');
-
-    try {
-      const resp = await fetch('/ai/draft-template/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description }),
-      });
-      if (!resp.body) throw new Error('No response body');
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let raw = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        raw += chunk;
-        setStreamOutput(raw);
-      }
-
-      // Extract JSON from code block or raw text
-      const jsonMatch = raw.match(/```json\n?([\s\S]*?)```/) ??
-                        raw.match(/```\n?([\s\S]*?)```/);
-      const jsonStr = jsonMatch ? jsonMatch[1] : raw.trim();
-
-      try {
-        const parsed: ContractTemplate = JSON.parse(jsonStr);
-        setTemplate(parsed);
-        setStep('review');
-      } catch {
-        setError('Claude returned unexpected output. Try rephrasing your description.');
-      }
-    } catch (e: any) {
-      setError(e.message ?? String(e));
-    } finally {
-      setStreaming(false);
-    }
+  const selectPreset = (preset: typeof PRESETS[number]) => {
+    const now = new Date().toISOString();
+    const slug = preset.template.metricType.replace(/_/g, '-');
+    setTemplate({
+      ...preset.template,
+      id: `${slug}-${Date.now()}`,
+      createdAt: now,
+    });
+    setStep('review');
   };
 
   // ── Step 2: Publish the template ──────────────────────────────────────────
@@ -99,8 +148,8 @@ export function GovernmentPortal() {
 
       {/* Step indicator */}
       <div className="steps-bar">
-        <div className={`step ${step === 'describe' ? 'step--active' : 'step--done'}`}>
-          1 · Describe
+        <div className={`step ${step === 'pick' ? 'step--active' : 'step--done'}`}>
+          1 · Pick Type
         </div>
         <div className="step-arrow">→</div>
         <div className={`step ${step === 'review' ? 'step--active' : step === 'published' ? 'step--done' : ''}`}>
@@ -114,45 +163,26 @@ export function GovernmentPortal() {
 
       {error && <div className="alert alert--error">{error}</div>}
 
-      {/* ── Step 1: Describe ─────────────────────────────────────────────── */}
-      {step === 'describe' && (
+      {/* ── Step 1: Pick preset ───────────────────────────────────────────── */}
+      {step === 'pick' && (
         <div className="portal-card">
-          <h2>Describe the contract type</h2>
+          <h2>Choose a contract type</h2>
           <p className="field-hint">
-            Explain what the enterprise must comply with, how compliance is measured,
-            what happens if they violate, and how the funds should be split.
-            Claude AI will generate the structured template.
+            Select the compliance category. All fields will be pre-filled — you can edit them in the next step.
           </p>
-          <textarea
-            className="portal-textarea"
-            rows={7}
-            placeholder={
-              'Example: "Monthly CO2 emissions compliance for manufacturing companies in France. ' +
-              'Enterprises must stay below their allocated quota of CO2 tons per month. ' +
-              'Independent environmental auditors verify monthly readings. ' +
-              '60% of the locked funds can be returned to the enterprise over 12 months if they comply. ' +
-              '40% goes to the national reforestation fund if they exceed their quota. ' +
-              'If they exceed by more than 20%, the full penalty pool is released immediately."'
-            }
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            disabled={streaming}
-          />
-
-          {streaming && (
-            <div className="stream-output">
-              <div className="stream-output__label">Claude is drafting your template…</div>
-              <pre className="stream-output__content">{streamOutput}</pre>
-            </div>
-          )}
-
-          <button
-            className="portal-btn portal-btn--primary"
-            onClick={handleGenerate}
-            disabled={streaming || !description.trim()}
-          >
-            {streaming ? 'Generating…' : 'Generate Template with Claude AI'}
-          </button>
+          <div className="preset-grid">
+            {PRESETS.map(preset => (
+              <button
+                key={preset.label}
+                className="preset-card"
+                onClick={() => selectPreset(preset)}
+              >
+                <span className="preset-card__icon">{preset.icon}</span>
+                <span className="preset-card__label">{preset.label}</span>
+                <span className="preset-card__hint">{preset.hint}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -161,12 +191,12 @@ export function GovernmentPortal() {
         <div className="portal-card">
           <div className="portal-card__header">
             <h2>Review & Edit Template</h2>
-            <button className="portal-btn portal-btn--ghost" onClick={() => setStep('describe')}>
+            <button className="portal-btn portal-btn--ghost" onClick={() => setStep('pick')}>
               ← Back
             </button>
           </div>
           <p className="field-hint">
-            Review the generated template. Edit any fields before publishing.
+            Review the pre-filled template. Edit any fields before publishing.
           </p>
 
           <div className="template-form">
@@ -327,6 +357,24 @@ export function GovernmentPortal() {
                 onChange={e => updateField('oracleCredentialType', e.target.value)}
               />
             </FormRow>
+
+            <div className="form-section-title">Parties</div>
+            <FormRow label="Government XRPL Address" hint="Your institution's XRPL address (auto-fills for enterprises)">
+              <input
+                className="portal-input"
+                placeholder="rGovAddress..."
+                value={template.governmentAddress ?? ''}
+                onChange={e => updateField('governmentAddress', e.target.value)}
+              />
+            </FormRow>
+            <FormRow label="Contractor XRPL Address" hint="Contractor who receives the penalty pool on violations">
+              <input
+                className="portal-input"
+                placeholder="rContractorAddress..."
+                value={template.contractorAddress ?? ''}
+                onChange={e => updateField('contractorAddress', e.target.value)}
+              />
+            </FormRow>
           </div>
 
           {/* Fund split preview */}
@@ -390,7 +438,7 @@ export function GovernmentPortal() {
           </div>
           <button
             className="portal-btn portal-btn--ghost"
-            onClick={() => { setStep('describe'); setDescription(''); setTemplate(null); setStreamOutput(''); }}
+            onClick={() => { setStep('pick'); setTemplate(null); }}
           >
             Create Another Template
           </button>

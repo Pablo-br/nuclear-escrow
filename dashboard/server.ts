@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { readFile, writeFile, readdir, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -5,6 +6,7 @@ import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
+import { Client, Wallet } from 'xrpl';
 import { draftTemplate, explainTemplate, evaluateCompliance, streamDraftTemplate } from '../api/claude-assistant.js';
 import type { ContractTemplate, ContractInstance } from '../shared/src/contract-template.js';
 
@@ -357,6 +359,70 @@ app.post('/ai/evaluate-compliance', async (req, res) => {
     res.json(verdict);
   } catch (e) {
     res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── POST /contracts/:id/lock-escrow — create EscrowCreate on XRPL ───────────
+
+app.post('/contracts/:id/lock-escrow', async (req, res) => {
+  const { enterpriseSeed } = req.body as { enterpriseSeed: string };
+  if (!enterpriseSeed) { res.status(400).json({ error: 'enterpriseSeed required' }); return; }
+
+  const filePath = join(CONTRACTS_DIR, `${req.params.id}.json`);
+  if (!existsSync(filePath)) { res.status(404).json({ error: 'contract not found' }); return; }
+
+  const instance: ContractInstance = JSON.parse(await readFile(filePath, 'utf-8'));
+  const destination = instance.regulatorAddress;
+  if (!destination) { res.status(400).json({ error: 'contract has no regulatorAddress (government address)' }); return; }
+
+  const client = new Client('wss://s.altnet.rippletest.net:51233');
+  try {
+    await client.connect();
+    const wallet = Wallet.fromSeed(enterpriseSeed);
+
+    // Ripple epoch: seconds since 2000-01-01T00:00:00Z
+    const RIPPLE_EPOCH = 946684800;
+    const periods = instance.template.periods;
+    const periodDays = instance.template.periodLengthDays;
+    const lockDurationSecs = periods * periodDays * 86400;
+    const finishAfter = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + lockDurationSecs;
+
+    const toHex = (s: string) => Buffer.from(s, 'utf-8').toString('hex').toUpperCase();
+
+    const tx: Record<string, unknown> = {
+      TransactionType: 'EscrowCreate',
+      Account: wallet.address,
+      Destination: destination,
+      Amount: '1000000', // 1 XRP collateral (RLUSD liability stored in memo)
+      FinishAfter: finishAfter,
+      Memos: [
+        { Memo: { MemoType: toHex('ContractId'),     MemoData: toHex(instance.id) } },
+        { Memo: { MemoType: toHex('LiabilityRlusd'), MemoData: toHex(instance.totalLocked) } },
+      ],
+    };
+
+    const prepared = await client.autofill(tx);
+    const signed = wallet.sign(prepared as Parameters<typeof wallet.sign>[0]);
+    const result = await client.submitAndWait(signed.tx_blob);
+
+    const txHash: string = (result.result as Record<string, unknown>).hash as string;
+    const sequence: number = (result.result as Record<string, unknown>).Sequence as number
+      ?? ((result.result as Record<string, unknown>).tx_json as Record<string, unknown>)?.Sequence as number;
+
+    // Persist escrow state on the contract
+    const updated: ContractInstance = {
+      ...instance,
+      complianceEscrowSequence: sequence,
+      activatedAt: new Date().toISOString(),
+      status: 'active',
+    };
+    await writeFile(filePath, JSON.stringify(updated, null, 2));
+
+    res.json({ txHash, sequence });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  } finally {
+    await client.disconnect();
   }
 });
 

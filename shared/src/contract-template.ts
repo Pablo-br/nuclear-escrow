@@ -27,6 +27,8 @@ export interface ContractTemplate {
                                      // configurable: enterprise + government agree per-contract
   createdAt: string;                 // ISO timestamp
   createdBy: string;                 // government account / address
+  governmentAddress?: string;        // XRPL address of the issuing government institution
+  contractorAddress?: string;        // XRPL address of the contractor (penalty pool recipient)
 }
 
 // ─── ContractInstance ──────────────────────────────────────────────────────────
