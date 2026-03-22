@@ -73,6 +73,15 @@ export interface ContractInstance {
   status: 'negotiating' | 'active' | 'complete' | 'cancelled';
   createdAt: string;
   activatedAt?: string;              // when escrows were deployed on-chain
+
+  // Mock oracle simulation (generated at contract signing time)
+  mockScenarios?: MockScenario[];
+  oraclePool?: OracleConfig[];
+  activeScenario?: 'all-compliant' | 'all-violation' | 'mixed';
+
+  // Hook-gated permit system
+  hookDeployed?: boolean;                                  // true once SetHook tx confirmed
+  // Permit state lives on-chain in the Hook's namespace — query via XRPL ledger_entry
 }
 
 // ─── PeriodResult ─────────────────────────────────────────────────────────────
@@ -106,6 +115,67 @@ export interface ComplianceVerdict {
     complianceIsBelow: boolean;
     periodIndex: number;
   };
+}
+
+// ─── WalletSession ────────────────────────────────────────────────────────────
+// Derived from a seed on the server — never contains the seed itself.
+
+export interface WalletSession {
+  address: string;
+  classicAddress: string;
+  publicKey: string;
+}
+
+// ─── OnChainEscrow ────────────────────────────────────────────────────────────
+// Represents a single EscrowObject returned from account_objects on XRPL.
+
+export interface OnChainEscrow {
+  index: string;
+  Account: string;
+  Destination: string;
+  Amount: string;
+  FinishAfter?: number;
+  CancelAfter?: number;
+  Memos?: Array<{ Memo: { MemoType?: string; MemoData?: string } }>;
+}
+
+// ─── MockScenario ─────────────────────────────────────────────────────────────
+// One of three oracle data scenarios auto-generated at contract creation time.
+
+export interface MockScenario {
+  name: 'all-compliant' | 'all-violation' | 'mixed';
+  label: string;
+  periodReadings: number[];
+}
+
+// ─── OracleConfig ─────────────────────────────────────────────────────────────
+// Per-oracle configuration in the simulated oracle pool.
+
+export interface OracleConfig {
+  index: number;
+  byzantineProbability: number;  // 0.0–1.0 chance of reporting opposite of true data
+}
+
+// ─── SimulatedOracleVote ──────────────────────────────────────────────────────
+
+export interface SimulatedOracleVote {
+  oracleIndex: number;
+  reportedReading: number;
+  vote: 'compliant' | 'violation';
+  byzantine: boolean;
+}
+
+// ─── SimulatePeriodResult ─────────────────────────────────────────────────────
+
+export interface SimulatePeriodResult {
+  periodIndex: number;
+  trueReading: number;
+  truelyCompliant: boolean;
+  oracleVotes: SimulatedOracleVote[];
+  compliantVotes: number;
+  violationVotes: number;
+  consensus: 'compliant' | 'violation' | 'no-consensus';
+  quorumRequired: number;
 }
 
 // ─── OracleAttestation (input to evaluateCompliance) ─────────────────────────

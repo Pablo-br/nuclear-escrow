@@ -1,0 +1,144 @@
+{
+  "id": "co2-tons-1774166823032-vLJj4PS8-1774170800041",
+  "templateId": "co2-tons-1774166823032",
+  "template": {
+    "id": "co2-tons-1774166823032",
+    "name": "Myname",
+    "description": "Plswork",
+    "industry": "manufacturing",
+    "metricType": "co2_tons",
+    "metricUnit": "tons CO2/month",
+    "metricDescription": "ehh",
+    "complianceIsBelow": true,
+    "periods": 3,
+    "periodLengthDays": 30,
+    "oracleCount": 5,
+    "quorumRequired": 3,
+    "oracleCredentialType": "co2_tons",
+    "compliancePoolPct": 70,
+    "penaltyPoolPct": 30,
+    "periodDistribution": [
+      34,
+      33,
+      33
+    ],
+    "violationBehavior": "period_slice",
+    "createdAt": "2026-03-22T08:07:03.032Z",
+    "createdBy": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+    "governmentAddress": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+    "contractorAddress": "rHVkW5kJ5go7VZTUv2Gk7BoRbmbj3UsfZ5"
+  },
+  "enterpriseName": "rHwwRgPYAeaALYjAbxDhsTR3j9vLJj4PS8",
+  "enterpriseAddress": "rHwwRgPYAeaALYjAbxDhsTR3j9vLJj4PS8",
+  "contractorAddress": "rHVkW5kJ5go7VZTUv2Gk7BoRbmbj3UsfZ5",
+  "regulatorAddress": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+  "totalLocked": "500000",
+  "compliancePool": "350000",
+  "penaltyPool": "150000",
+  "thresholdPerPeriod": [
+    100,
+    100,
+    100
+  ],
+  "oraclePubkeys": [],
+  "currentPeriod": 3,
+  "periodResults": [
+    {
+      "periodIndex": 0,
+      "verdict": "compliant",
+      "metricValue": 85,
+      "threshold": 100,
+      "oracleCount": 0,
+      "txHash": "129863D5FD6FF16F5D93F7E1F545056E9FFC911B90E1C9697FAE0160CDEFF709",
+      "amountReleased": "116666",
+      "releasedTo": "enterprise",
+      "claudeExplanation": "",
+      "timestamp": "2026-03-22T09:16:29.510Z"
+    },
+    {
+      "periodIndex": 1,
+      "verdict": "violation",
+      "metricValue": 114.99999999999999,
+      "threshold": 100,
+      "oracleCount": 0,
+      "txHash": "F98A9242119249A87FA1925AB8CA97B06FFB96062619AC7996DD430C33047F63",
+      "amountReleased": "116666",
+      "releasedTo": "contractor",
+      "claudeExplanation": "",
+      "timestamp": "2026-03-22T09:17:21.896Z"
+    },
+    {
+      "periodIndex": 2,
+      "verdict": "violation",
+      "metricValue": 114.99999999999999,
+      "threshold": 100,
+      "oracleCount": 0,
+      "txHash": "6EA3F6A23777061AAA585D7FB986859ED7927D13828B490E1899FD9062FEAFCD",
+      "amountReleased": "116666",
+      "releasedTo": "contractor",
+      "claudeExplanation": "",
+      "timestamp": "2026-03-22T09:19:36.855Z"
+    }
+  ],
+  "status": "complete",
+  "createdAt": "2026-03-22T09:13:20.041Z",
+  "activatedAt": "2026-03-22T09:13:20.041Z",
+  "complianceChildEscrows": [
+    15875109,
+    15875110,
+    15875111
+  ],
+  "complianceEscrowSequence": 15875112,
+  "mockScenarios": [
+    {
+      "name": "all-compliant",
+      "label": "All Compliant",
+      "periodReadings": [
+        85,
+        85,
+        85
+      ]
+    },
+    {
+      "name": "all-violation",
+      "label": "All Violation",
+      "periodReadings": [
+        114.99999999999999,
+        114.99999999999999,
+        114.99999999999999
+      ]
+    },
+    {
+      "name": "mixed",
+      "label": "Mixed (even=OK, odd=breach)",
+      "periodReadings": [
+        85,
+        114.99999999999999,
+        85
+      ]
+    }
+  ],
+  "oraclePool": [
+    {
+      "index": 0,
+      "byzantineProbability": 0
+    },
+    {
+      "index": 1,
+      "byzantineProbability": 0.1
+    },
+    {
+      "index": 2,
+      "byzantineProbability": 0.2
+    },
+    {
+      "index": 3,
+      "byzantineProbability": 0.30000000000000004
+    },
+    {
+      "index": 4,
+      "byzantineProbability": 0.4
+    }
+  ],
+  "activeScenario": "all-violation"
+}

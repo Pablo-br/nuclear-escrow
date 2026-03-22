@@ -1,0 +1,27 @@
+{
+  "id": "co2-tons-1774166823032",
+  "name": "Myname",
+  "description": "Plswork",
+  "industry": "manufacturing",
+  "metricType": "co2_tons",
+  "metricUnit": "tons CO2/month",
+  "metricDescription": "ehh",
+  "complianceIsBelow": true,
+  "periods": 3,
+  "periodLengthDays": 30,
+  "oracleCount": 5,
+  "quorumRequired": 3,
+  "oracleCredentialType": "co2_tons",
+  "compliancePoolPct": 70,
+  "penaltyPoolPct": 30,
+  "periodDistribution": [
+    34,
+    33,
+    33
+  ],
+  "violationBehavior": "period_slice",
+  "createdAt": "2026-03-22T08:07:03.032Z",
+  "createdBy": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+  "governmentAddress": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+  "contractorAddress": "rHVkW5kJ5go7VZTUv2Gk7BoRbmbj3UsfZ5"
+}

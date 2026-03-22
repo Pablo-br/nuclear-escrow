@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useParams } from 'react-router-dom';
 import { useEscrowState } from './hooks/useEscrowState.ts';
 import { useMilestoneHistory } from './hooks/useMilestoneHistory.ts';
 import { SiteStatus } from './components/SiteStatus.tsx';
@@ -12,6 +12,8 @@ import { TerminalModal } from './components/TerminalModal.tsx';
 import { ComplianceDashboard } from './components/ComplianceDashboard.tsx';
 import { GovernmentPortal } from './pages/GovernmentPortal.tsx';
 import { EnterprisePortal } from './pages/EnterprisePortal.tsx';
+import { RegulatorPortal } from './pages/RegulatorPortal.tsx';
+import { CompanyPortal } from './pages/CompanyPortal.tsx';
 import {
   MOCK_ORACLES,
   MOCK_YIELD_EARNED,
@@ -184,18 +186,20 @@ export default function App() {
         <Link to="/" className="app-header__logo">☢ NuclearEscrow</Link>
         <span className="app-header__badge">XRPL Testnet</span>
         <nav className="app-header__nav">
-          <Link to="/">Nuclear Demo</Link>
-          <Link to="/government">Government</Link>
-          <Link to="/enterprise">Enterprise</Link>
+          <Link to="/regulator">Regulator</Link>
+          <Link to="/company">Company</Link>
         </nav>
         <div className="app-header__spacer" />
       </header>
 
       <Routes>
-        <Route path="/" element={<NuclearDashboard />} />
-        <Route path="/government" element={<GovernmentPortal />} />
-        <Route path="/enterprise" element={<EnterprisePortal />} />
+        <Route path="/" element={<Navigate to="/regulator" replace />} />
+        <Route path="/regulator" element={<RegulatorPortal />} />
+        <Route path="/company" element={<CompanyPortal />} />
         <Route path="/contract/:id" element={<ContractPage />} />
+        <Route path="/government" element={<RegulatorPortal />} />
+        <Route path="/enterprise" element={<CompanyPortal />} />
+        <Route path="/nuclear" element={<NuclearDashboard />} />
       </Routes>
     </BrowserRouter>
   );

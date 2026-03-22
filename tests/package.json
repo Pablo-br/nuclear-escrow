@@ -1,0 +1,21 @@
+{
+  "name": "compliance-hooks-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "End-to-end tests for the XRPL Hooks compliance system",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "dotenv": "^16.0.0",
+    "xrpl": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

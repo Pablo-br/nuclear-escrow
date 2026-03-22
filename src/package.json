@@ -1,0 +1,27 @@
+{
+  "name": "compliance-hooks",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "XRPL Hooks compliance system — TypeScript client layer",
+  "main": "dist/types.js",
+  "exports": {
+    "./types":           "./dist/types.js",
+    "./oracle-registry": "./dist/oracle-registry.js",
+    "./committee":       "./dist/committee.js",
+    "./regulator":       "./dist/regulator.js",
+    "./company":         "./dist/company.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "xrpl": "^4.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}

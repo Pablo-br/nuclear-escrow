@@ -15,6 +15,9 @@ export default defineConfig({
       '/templates': { target: 'http://localhost:3001', changeOrigin: true },
       '/contracts': { target: 'http://localhost:3001', changeOrigin: true },
       '/ai':        { target: 'http://localhost:3001', changeOrigin: true },
+      '/auth':      { target: 'http://localhost:3001', changeOrigin: true },
+      '/xrpl':      { target: 'http://localhost:3001', changeOrigin: true },
+      '/regulator': { target: 'http://localhost:3001', changeOrigin: true },
     },
   },
 })

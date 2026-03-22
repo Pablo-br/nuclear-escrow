@@ -1,0 +1,107 @@
+{
+  "id": "co2-tons-1774176591352-vLJj4PS8-1774176682098",
+  "templateId": "co2-tons-1774176591352",
+  "template": {
+    "id": "co2-tons-1774176591352",
+    "name": "test11",
+    "description": "",
+    "industry": "energy",
+    "metricType": "co2_tons",
+    "metricUnit": "tons CO2/month",
+    "metricDescription": "",
+    "complianceIsBelow": true,
+    "periods": 3,
+    "periodLengthDays": 30,
+    "oracleCount": 5,
+    "quorumRequired": 3,
+    "oracleCredentialType": "co2_tons",
+    "compliancePoolPct": 70,
+    "penaltyPoolPct": 30,
+    "periodDistribution": [
+      34,
+      33,
+      33
+    ],
+    "violationBehavior": "period_slice",
+    "createdAt": "2026-03-22T10:49:51.351Z",
+    "createdBy": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+    "governmentAddress": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+    "contractorAddress": "rHVkW5kJ5go7VZTUv2Gk7BoRbmbj3UsfZ5"
+  },
+  "enterpriseName": "rHwwRgPYAeaALYjAbxDhsTR3j9vLJj4PS8",
+  "enterpriseAddress": "rHwwRgPYAeaALYjAbxDhsTR3j9vLJj4PS8",
+  "contractorAddress": "rHVkW5kJ5go7VZTUv2Gk7BoRbmbj3UsfZ5",
+  "regulatorAddress": "rPx1f2jbeg7p73yAumqqsKR8ptTeYpW4t2",
+  "totalLocked": "499999",
+  "compliancePool": "349999",
+  "penaltyPool": "150000",
+  "thresholdPerPeriod": [
+    100,
+    100,
+    100
+  ],
+  "oraclePubkeys": [],
+  "currentPeriod": 0,
+  "periodResults": [],
+  "status": "active",
+  "createdAt": "2026-03-22T10:51:22.098Z",
+  "activatedAt": "2026-03-22T10:51:22.098Z",
+  "complianceChildEscrows": [
+    15875125,
+    15875126,
+    15875127
+  ],
+  "complianceEscrowSequence": 15875128,
+  "mockScenarios": [
+    {
+      "name": "all-compliant",
+      "label": "All Compliant",
+      "periodReadings": [
+        85,
+        85,
+        85
+      ]
+    },
+    {
+      "name": "all-violation",
+      "label": "All Violation",
+      "periodReadings": [
+        114.99999999999999,
+        114.99999999999999,
+        114.99999999999999
+      ]
+    },
+    {
+      "name": "mixed",
+      "label": "Mixed (even=OK, odd=breach)",
+      "periodReadings": [
+        85,
+        114.99999999999999,
+        85
+      ]
+    }
+  ],
+  "oraclePool": [
+    {
+      "index": 0,
+      "byzantineProbability": 0
+    },
+    {
+      "index": 1,
+      "byzantineProbability": 0.1
+    },
+    {
+      "index": 2,
+      "byzantineProbability": 0.2
+    },
+    {
+      "index": 3,
+      "byzantineProbability": 0.30000000000000004
+    },
+    {
+      "index": 4,
+      "byzantineProbability": 0.4
+    }
+  ],
+  "activeScenario": "all-compliant"
+}

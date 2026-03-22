@@ -1544,3 +1544,258 @@ code {
 }
 
 .period-row__tx-link:hover { text-decoration: underline; }
+
+/* ─── WalletConnect ──────────────────────────────────────────────────────────── */
+.wallet-connect {
+  padding: 20px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  background: var(--c-card);
+}
+
+.wallet-connect--connected {
+  border-color: var(--c-green);
+  background: var(--c-green-dim);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+}
+
+.wallet-connect__label {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--c-navy);
+  white-space: nowrap;
+}
+
+/* ─── ActiveHooksPanel ───────────────────────────────────────────────────────── */
+.hooks-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.hooks-panel__item {
+  display: grid;
+  grid-template-columns: 1fr 120px 120px 60px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.hooks-panel__amount {
+  font-weight: 700;
+  color: var(--c-teal);
+  font-variant-numeric: tabular-nums;
+}
+
+.hooks-panel__deadline {
+  color: var(--c-muted);
+  font-size: 12px;
+}
+
+.hooks-panel__empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--c-muted);
+  font-size: 14px;
+}
+
+/* ─── Period breakdown table (RegulatorPortal + CompanyPortal) ───────────────── */
+.period-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 12px 0;
+}
+
+.period-breakdown-table th {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--c-border);
+  color: var(--c-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.period-breakdown-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text);
+  vertical-align: middle;
+}
+
+.period-breakdown-table tr:last-child td { border-bottom: none; }
+
+/* ─── Oracle vote simulation table ──────────────────────────────────────────── */
+.oracle-vote-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 12px 0;
+}
+
+.oracle-vote-table th {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--c-border);
+  color: var(--c-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.oracle-vote-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text);
+  vertical-align: middle;
+}
+
+.oracle-vote-table tr:last-child td { border-bottom: none; }
+
+.oracle-vote-table tfoot td {
+  font-weight: 600;
+  padding: 10px 10px;
+  background: var(--c-page);
+  border-top: 2px solid var(--c-border);
+}
+
+/* ─── Scenario selector strip ────────────────────────────────────────────────── */
+.scenario-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--c-teal-dim);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.scenario-selector label {
+  font-weight: 600;
+  color: var(--c-navy);
+  white-space: nowrap;
+}
+
+.scenario-selector select {
+  padding: 4px 8px;
+  border: 1px solid var(--c-teal);
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--c-text);
+  outline: none;
+}
+
+/* ─── Oracle status banner ───────────────────────────────────────────────────── */
+.oracle-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-card);
+  font-size: 13px;
+}
+.oracle-status-banner__next {
+  color: var(--c-muted);
+  font-variant-numeric: tabular-nums;
+}
+.oracle-status-banner__scenario {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.oracle-status-banner__scenario label {
+  color: var(--c-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ─── Banner warn ────────────────────────────────────────────────────────────── */
+.banner--warn {
+  background: var(--c-amber-dim);
+  color: var(--c-amber);
+  border: 1px solid rgba(217, 119, 6, 0.3);
+}
+
+/* ─── Claim section (Hook permit gating) ─────────────────────────────────────── */
+.claim-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--c-navy-mid);
+  border-radius: var(--r-card);
+  border: 1px solid var(--c-border);
+}
+
+.claim-section__permit {
+  font-size: 13px;
+  color: var(--c-muted);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.claim-section__buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 600px) {
+  .claim-section__buttons { grid-template-columns: 1fr; }
+}
+
+.claim-attempt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--c-navy);
+  border-radius: var(--r-card);
+  border: 1px solid var(--c-border);
+}
+
+.claim-attempt__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-muted);
+}
+
+.claim-result {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.claim-result--success {
+  background: var(--c-green-dim);
+  color: var(--c-green);
+  border: 1px solid rgba(5, 150, 105, 0.3);
+}
+
+.claim-result--rejected {
+  background: var(--c-red-dim);
+  color: var(--c-red);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+}
