@@ -5,7 +5,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
 import { SensorSimulator, PHASE_THRESHOLDS } from '../oracle/src/sensor-simulator.ts';
-import { MOCK_CONTRACTS } from './src/mock-contracts.ts';
+// No mock contracts — all contracts are created through the UI with real wallets
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -20,7 +20,7 @@ app.use((_req, res, next) => {
 
 app.options('/{*path}', (_req, res) => { res.sendStatus(204); });
 
-let contracts = [...MOCK_CONTRACTS];
+let contracts: any[] = [];
 
 // ─── GET & POST /contracts ──────────────────────────────────────────────────
 app.get('/contracts', (req, res) => {
@@ -29,6 +29,7 @@ app.get('/contracts', (req, res) => {
 
 app.post('/contracts', (req, res) => {
   const newContract = req.body;
+  console.log(`[POST /contracts] New contract: id=${newContract.id}, govWallet=${newContract.governmentWallet}, companyWallet=${newContract.companyWallet}`);
   contracts.push(newContract);
   res.json(newContract);
 });

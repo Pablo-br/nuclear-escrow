@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ContractCard } from '../shared/ContractCard.tsx';
 import { PlusCircle, Key } from 'lucide-react';
-import { Wallet } from 'xrpl';
+import { Wallet, Client } from 'xrpl';
 
-export const GovernmentDashboard: React.FC<{ walletAddress: string }> = ({ walletAddress }) => {
+export const GovernmentDashboard: React.FC<{ walletAddress: string; walletSeed: string }> = ({ walletAddress, walletSeed }) => {
   const [contracts, setContracts] = useState<any[]>([]);
   
   useEffect(() => {
@@ -22,17 +22,18 @@ export const GovernmentDashboard: React.FC<{ walletAddress: string }> = ({ walle
   });
 
   const handleCreateContract = async () => {
-    // Si el usuario por error pega el Seed en vez de la wallet pública, lo extraemos.
+    // Si el usuario pega el Seed en vez de la wallet pública, extraemos la dirección automáticamente.
     let finalCompanyWallet = newContractForm.companyWallet.trim();
     try {
       if (finalCompanyWallet.startsWith('s') && finalCompanyWallet.length > 20) {
         finalCompanyWallet = Wallet.fromSeed(finalCompanyWallet).classicAddress;
       }
-    } catch(e) { /* ignore */ }
+    } catch(e) { /* ignore - not a valid seed, treat as address */ }
 
-    // Mock creating contract
+    const contractId = "CTR-NEW-" + Math.floor(Math.random() * 1000);
+
     const newContract = {
-      id: "CTR-NEW-" + Math.floor(Math.random() * 1000),
+      id: contractId,
       facilityName: newContractForm.facilityName,
       governmentWallet: walletAddress,
       companyWallet: finalCompanyWallet,
@@ -50,14 +51,51 @@ export const GovernmentDashboard: React.FC<{ walletAddress: string }> = ({ walle
       history: []
     };
     
+    // 1. Guardar en el backend
     await fetch('/contracts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newContract)
     });
+
+    // 2. Registrar la propuesta en la blockchain XRPL
+    let txHash = '(no registrado)';
+    try {
+      const wallet = Wallet.fromSeed(walletSeed);
+      const client = new Client('wss://s.altnet.rippletest.net:51233');
+      await client.connect();
+
+      const toHex = (str: string) => Array.from(str).map(c => c.charCodeAt(0).toString(16).padStart(2,'0')).join('').toUpperCase();
+      const memoData = toHex(JSON.stringify({
+        type: 'NuclearEscrow-Proposal',
+        contractId,
+        facility: newContractForm.facilityName,
+        companyWallet: finalCompanyWallet,
+        amount: newContractForm.totalAmount,
+      }));
+
+      const tx = await client.submitAndWait({
+        TransactionType: 'AccountSet',
+        Account: wallet.classicAddress,
+        Memos: [{ Memo: { MemoData: memoData } }]
+      }, { wallet });
+
+      txHash = tx.result.hash;
+      await client.disconnect();
+    } catch (e: any) {
+      console.error('XRPL Proposal Error:', e);
+    }
+
+    alert(
+      `✅ Contrato ${contractId} creado y enviado a la empresa.\n` +
+      `Wallet empresa: ${finalCompanyWallet}\n` +
+      `Hash XRPL de la propuesta: ${txHash}\n\n` +
+      `La empresa podrá verlo al iniciar sesión con su clave secreta.`
+    );
     
     setContracts([...contracts, newContract]);
     setShowCreateMode(false);
+    setNewContractForm({ facilityName: '', companyWallet: '', totalAmount: '', durationYears: '50' });
   };
 
   return (
@@ -95,14 +133,22 @@ export const GovernmentDashboard: React.FC<{ walletAddress: string }> = ({ walle
               />
             </div>
             <div className="input-group">
-              <label className="input-label">Wallet de la Empresa Operadora</label>
+              <label className="input-label">Wallet Pública de la Empresa Operadora (o su Seed)</label>
               <input 
                 type="text" 
                 className="input-field" 
-                placeholder="rEmpresa..." 
+                placeholder="rEmpresa... ó sEd... (se auto-deriva la dirección)" 
                 value={newContractForm.companyWallet}
                 onChange={e => setNewContractForm({...newContractForm, companyWallet: e.target.value})}
               />
+              {newContractForm.companyWallet.trim().startsWith('s') && newContractForm.companyWallet.trim().length > 20 && (() => {
+                try {
+                  const derived = Wallet.fromSeed(newContractForm.companyWallet.trim()).classicAddress;
+                  return <p className="text-xs text-success mt-2">✓ Dirección pública derivada: {derived}</p>;
+                } catch {
+                  return <p className="text-xs text-danger mt-2">✗ Seed inválido</p>;
+                }
+              })()}
             </div>
              <div className="input-group">
               <label className="input-label">Monto Total (RLUSD)</label>
