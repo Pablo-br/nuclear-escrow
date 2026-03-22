@@ -362,63 +362,114 @@ app.post('/ai/evaluate-compliance', async (req, res) => {
   }
 });
 
-// ─── POST /contracts/:id/lock-escrow — create EscrowCreate on XRPL ───────────
+// ─── XRPL helpers ─────────────────────────────────────────────────────────────
+
+const RIPPLE_EPOCH = 946684800;
+const XRPL_WSS = 'wss://s.altnet.rippletest.net:51233';
+const toMemo = (s: string) => Buffer.from(s, 'utf-8').toString('hex').toUpperCase();
+
+async function xrplSubmit(
+  wallet: InstanceType<typeof Wallet>,
+  tx: Record<string, unknown>,
+  client: InstanceType<typeof Client>
+): Promise<{ hash: string; sequence: number }> {
+  const prepared = await client.autofill(tx as Parameters<typeof client.autofill>[0]);
+  const signed = wallet.sign(prepared as Parameters<typeof wallet.sign>[0]);
+  const result = await client.submitAndWait(signed.tx_blob);
+  const r = result.result as Record<string, unknown>;
+  const txJson = r.tx_json as Record<string, unknown> | undefined;
+  const hash = String(r.hash ?? txJson?.hash ?? '');
+  const sequence = Number(r.Sequence ?? txJson?.Sequence ?? 0);
+  return { hash, sequence };
+}
+
+// ─── POST /contracts/:id/lock-escrow — Payment + batch EscrowCreate ───────────
+// Enterprise sends XRP to gov wallet; gov creates N periodic + 1 bonus escrow.
+// Both pool escrows have Destination=enterprise so only gov can redirect on violation.
 
 app.post('/contracts/:id/lock-escrow', async (req, res) => {
   const { enterpriseSeed } = req.body as { enterpriseSeed: string };
+  const govSeed = process.env.GOVERNMENT_SEED;
   if (!enterpriseSeed) { res.status(400).json({ error: 'enterpriseSeed required' }); return; }
+  if (!govSeed) { res.status(500).json({ error: 'GOVERNMENT_SEED not set in .env' }); return; }
 
   const filePath = join(CONTRACTS_DIR, `${req.params.id}.json`);
   if (!existsSync(filePath)) { res.status(404).json({ error: 'contract not found' }); return; }
 
   const instance: ContractInstance = JSON.parse(await readFile(filePath, 'utf-8'));
-  const destination = instance.regulatorAddress;
-  if (!destination) { res.status(400).json({ error: 'contract has no regulatorAddress (government address)' }); return; }
+  if (!instance.regulatorAddress) { res.status(400).json({ error: 'contract has no regulatorAddress' }); return; }
 
-  const client = new Client('wss://s.altnet.rippletest.net:51233');
+  const client = new Client(XRPL_WSS);
   try {
     await client.connect();
-    const wallet = Wallet.fromSeed(enterpriseSeed);
+    const enterpriseWallet = Wallet.fromSeed(enterpriseSeed);
+    const govWallet = Wallet.fromSeed(govSeed);
 
-    // Ripple epoch: seconds since 2000-01-01T00:00:00Z
-    const RIPPLE_EPOCH = 946684800;
-    const periods = instance.template.periods;
-    const periodDays = instance.template.periodLengthDays;
-    const lockDurationSecs = periods * periodDays * 86400;
-    const finishAfter = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH + lockDurationSecs;
+    const { template } = instance;
+    const periods = template.periods;
+    const totalDrops = Math.round(Number(instance.totalLocked) * 1_000_000);
+    const periodicDrops = Math.floor(totalDrops * template.compliancePoolPct / 100);
+    const bonusDrops = totalDrops - periodicDrops;
+    const sliceDrops = Math.floor(periodicDrops / periods);
+    const rippleNow = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH;
 
-    const toHex = (s: string) => Buffer.from(s, 'utf-8').toString('hex').toUpperCase();
+    // Step 1 — Payment: enterprise → government (full amount)
+    const { hash: paymentTxHash } = await xrplSubmit(enterpriseWallet, {
+      TransactionType: 'Payment',
+      Account: enterpriseWallet.address,
+      Destination: govWallet.address,
+      Amount: String(totalDrops),
+    }, client);
 
-    const tx: Record<string, unknown> = {
+    // Step 2 — N periodic escrows from gov → enterprise
+    // FinishAfter staggered at 30s per period (demo-friendly)
+    // CancelAfter = FinishAfter + 60s so gov can cancel on violation after the window
+    const periodicSequences: number[] = [];
+    const periodicTxHashes: string[] = [];
+    for (let i = 0; i < periods; i++) {
+      const finishAfter = rippleNow + (i + 1) * 30;
+      const { hash, sequence } = await xrplSubmit(govWallet, {
+        TransactionType: 'EscrowCreate',
+        Account: govWallet.address,
+        Destination: instance.enterpriseAddress,
+        Amount: String(sliceDrops),
+        FinishAfter: finishAfter,
+        CancelAfter: finishAfter + 60,
+        Memos: [
+          { Memo: { MemoType: toMemo('ContractId'), MemoData: toMemo(instance.id) } },
+          { Memo: { MemoType: toMemo('Period'),     MemoData: toMemo(String(i)) } },
+          { Memo: { MemoType: toMemo('Pool'),       MemoData: toMemo('periodic') } },
+        ],
+      }, client);
+      periodicSequences.push(sequence);
+      periodicTxHashes.push(hash);
+    }
+
+    // Step 3 — 1 final bonus escrow from gov → enterprise
+    const bonusFinishAfter = rippleNow + (periods + 1) * 30;
+    const { hash: bonusTxHash, sequence: bonusSequence } = await xrplSubmit(govWallet, {
       TransactionType: 'EscrowCreate',
-      Account: wallet.address,
-      Destination: destination,
-      Amount: '1000000', // 1 XRP collateral (RLUSD liability stored in memo)
-      FinishAfter: finishAfter,
+      Account: govWallet.address,
+      Destination: instance.enterpriseAddress,
+      Amount: String(bonusDrops),
+      FinishAfter: bonusFinishAfter,
+      CancelAfter: bonusFinishAfter + 60,
       Memos: [
-        { Memo: { MemoType: toHex('ContractId'),     MemoData: toHex(instance.id) } },
-        { Memo: { MemoType: toHex('LiabilityRlusd'), MemoData: toHex(instance.totalLocked) } },
+        { Memo: { MemoType: toMemo('ContractId'), MemoData: toMemo(instance.id) } },
+        { Memo: { MemoType: toMemo('Pool'),       MemoData: toMemo('final-bonus') } },
       ],
-    };
+    }, client);
 
-    const prepared = await client.autofill(tx);
-    const signed = wallet.sign(prepared as Parameters<typeof wallet.sign>[0]);
-    const result = await client.submitAndWait(signed.tx_blob);
-
-    const txHash: string = (result.result as Record<string, unknown>).hash as string;
-    const sequence: number = (result.result as Record<string, unknown>).Sequence as number
-      ?? ((result.result as Record<string, unknown>).tx_json as Record<string, unknown>)?.Sequence as number;
-
-    // Persist escrow state on the contract
     const updated: ContractInstance = {
       ...instance,
-      complianceEscrowSequence: sequence,
+      complianceChildEscrows: periodicSequences,
+      complianceEscrowSequence: bonusSequence,
       activatedAt: new Date().toISOString(),
       status: 'active',
     };
     await writeFile(filePath, JSON.stringify(updated, null, 2));
 
-    res.json({ txHash, sequence });
+    res.json({ paymentTxHash, periodicTxHashes, periodicSequences, bonusTxHash, bonusSequence });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   } finally {
@@ -427,7 +478,8 @@ app.post('/contracts/:id/lock-escrow', async (req, res) => {
 });
 
 // ─── POST /contracts/:id/period/:n — submit period attestation ───────────────
-// Body: { verdict: 'compliant' | 'violation', metricValue, oracleSigs?, txHash }
+// Body: { metricValue: number }
+// Verdict is auto-computed from metricValue vs threshold; on-chain release via gov wallet.
 
 app.post('/contracts/:id/period/:n', async (req, res) => {
   try {
@@ -436,29 +488,113 @@ app.post('/contracts/:id/period/:n', async (req, res) => {
 
     const instance: ContractInstance = JSON.parse(await readFile(filePath, 'utf-8'));
     const periodIndex = parseInt(req.params.n, 10);
-    const { verdict, metricValue, txHash, claudeExplanation } = req.body;
+    const { metricValue } = req.body as { metricValue: number };
 
+    const { template } = instance;
     const threshold = instance.thresholdPerPeriod[periodIndex] ?? 0;
-    const pct = instance.template.periodDistribution[periodIndex] ?? 0;
-    const pool = verdict === 'compliant' ? instance.compliancePool : instance.penaltyPool;
-    const amountReleased = String(Math.floor(Number(pool) * pct / 100));
+    const compliant = template.complianceIsBelow
+      ? Number(metricValue) <= threshold
+      : Number(metricValue) >= threshold;
+    const verdict = compliant ? 'compliant' : 'violation';
+
+    const totalDrops = Math.round(Number(instance.totalLocked) * 1_000_000);
+    const periodicDrops = Math.floor(totalDrops * template.compliancePoolPct / 100);
+    const sliceDrops = Math.floor(periodicDrops / template.periods);
+    const bonusDrops = totalDrops - periodicDrops;
+
+    let txHash = '';
+
+    // On-chain escrow release (requires GOVERNMENT_SEED in .env)
+    const govSeed = process.env.GOVERNMENT_SEED;
+    const escrowSeq = instance.complianceChildEscrows?.[periodIndex];
+
+    if (govSeed && escrowSeq !== undefined) {
+      const client = new Client(XRPL_WSS);
+      try {
+        await client.connect();
+        const govWallet = Wallet.fromSeed(govSeed);
+
+        if (compliant) {
+          // EscrowFinish — funds go to enterprise
+          const { hash } = await xrplSubmit(govWallet, {
+            TransactionType: 'EscrowFinish',
+            Account: govWallet.address,
+            Owner: govWallet.address,
+            OfferSequence: escrowSeq,
+          }, client);
+          txHash = hash;
+        } else {
+          // EscrowCancel — funds return to gov, then Payment to contractor
+          await xrplSubmit(govWallet, {
+            TransactionType: 'EscrowCancel',
+            Account: govWallet.address,
+            Owner: govWallet.address,
+            OfferSequence: escrowSeq,
+          }, client);
+          const { hash } = await xrplSubmit(govWallet, {
+            TransactionType: 'Payment',
+            Account: govWallet.address,
+            Destination: instance.contractorAddress,
+            Amount: String(sliceDrops),
+          }, client);
+          txHash = hash;
+        }
+
+        // After last period — settle the bonus escrow
+        const isLastPeriod = periodIndex === template.periods - 1;
+        if (isLastPeriod) {
+          const allResults = [...(instance.periodResults ?? []), { verdict }];
+          const allCompliant = allResults.every(r => r.verdict === 'compliant');
+          const bonusSeq = instance.complianceEscrowSequence;
+          if (bonusSeq !== undefined) {
+            if (allCompliant) {
+              await xrplSubmit(govWallet, {
+                TransactionType: 'EscrowFinish',
+                Account: govWallet.address,
+                Owner: govWallet.address,
+                OfferSequence: bonusSeq,
+              }, client);
+            } else {
+              await xrplSubmit(govWallet, {
+                TransactionType: 'EscrowCancel',
+                Account: govWallet.address,
+                Owner: govWallet.address,
+                OfferSequence: bonusSeq,
+              }, client);
+              await xrplSubmit(govWallet, {
+                TransactionType: 'Payment',
+                Account: govWallet.address,
+                Destination: instance.contractorAddress,
+                Amount: String(bonusDrops),
+              }, client);
+            }
+          }
+        }
+      } catch (onChainErr) {
+        // Non-fatal: record the off-chain result even if on-chain tx fails
+        console.error('[period/:n] on-chain error:', String(onChainErr));
+      } finally {
+        await client.disconnect();
+      }
+    }
 
     const result = {
       periodIndex,
       verdict,
-      metricValue,
+      metricValue: Number(metricValue),
       threshold,
-      oracleCount: instance.oraclePubkeys.length,
-      txHash: txHash ?? '',
-      amountReleased,
-      releasedTo: verdict === 'compliant' ? 'enterprise' : 'contractor',
-      claudeExplanation: claudeExplanation ?? '',
+      oracleCount: instance.oraclePubkeys?.length ?? 0,
+      txHash,
+      amountReleased: String(compliant ? sliceDrops : sliceDrops),
+      releasedTo: (verdict === 'compliant' ? 'enterprise' : 'contractor') as 'enterprise' | 'contractor',
+      claudeExplanation: '',
       timestamp: new Date().toISOString(),
     };
 
     instance.periodResults = instance.periodResults ?? [];
     instance.periodResults.push(result);
     instance.currentPeriod = periodIndex + 1;
+    if (periodIndex === template.periods - 1) instance.status = 'complete';
 
     await writeFile(filePath, JSON.stringify(instance, null, 2));
     res.json(result);

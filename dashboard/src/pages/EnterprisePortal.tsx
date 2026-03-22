@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import type { ContractTemplate, ContractInstance } from '../../../shared/src/contract-template.js';
 
 // ─── EnterprisePortal ────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ export function EnterprisePortal() {
   const [deployedInstance, setDeployedInstance] = useState<ContractInstance | null>(null);
   const [enterpriseSeed, setEnterpriseSeed] = useState('');
   const [locking, setLocking] = useState(false);
-  const [escrowResult, setEscrowResult] = useState<{ txHash: string; sequence: number } | null>(null);
+  const [escrowResult, setEscrowResult] = useState<{ txHash: string; sequence: number; periodicCount: number } | null>(null);
 
   // ── Fetch templates on mount ──────────────────────────────────────────────
 
@@ -158,8 +159,8 @@ export function EnterprisePortal() {
         body: JSON.stringify({ enterpriseSeed }),
       });
       if (!resp.ok) throw new Error(await resp.text());
-      const result = await resp.json() as { txHash: string; sequence: number };
-      setEscrowResult(result);
+      const result = await resp.json() as { paymentTxHash: string; periodicTxHashes: string[]; periodicSequences: number[]; bonusTxHash: string; bonusSequence: number };
+      setEscrowResult({ txHash: result.paymentTxHash, sequence: result.bonusSequence, periodicCount: result.periodicSequences.length });
     } catch (e: any) {
       setError(e.message ?? String(e));
     } finally {
@@ -286,11 +287,11 @@ export function EnterprisePortal() {
               <div className="form-section-title">Financial Terms</div>
               <div className="form-row">
                 <label className="form-row__label">
-                  Total Locked (RLUSD)
+                  Total Locked (XRP)
                   <span className="form-row__hint">
                     {form.totalLocked
-                      ? `≈ ${Math.floor(Number(form.totalLocked) * selectedTemplate.compliancePoolPct / 100).toLocaleString()} RLUSD compliance · ${Math.floor(Number(form.totalLocked) * selectedTemplate.penaltyPoolPct / 100).toLocaleString()} RLUSD penalty`
-                      : 'e.g. 1000000'}
+                      ? `≈ ${Math.floor(Number(form.totalLocked) * selectedTemplate.compliancePoolPct / 100).toLocaleString()} XRP periodic rebate · ${Math.floor(Number(form.totalLocked) * selectedTemplate.penaltyPoolPct / 100).toLocaleString()} XRP final bonus`
+                      : 'e.g. 10'}
                   </span>
                 </label>
                 <input className="portal-input" type="number" placeholder="1000000" value={form.totalLocked} onChange={e => setForm(p => ({ ...p, totalLocked: e.target.value }))} />
@@ -390,12 +391,12 @@ export function EnterprisePortal() {
               <span>Total Locked</span><span>{Number(deployedInstance.totalLocked).toLocaleString()} RLUSD</span>
             </div>
             <div className="template-summary__row">
-              <span>Compliance Pool</span>
-              <span className="badge badge--green">{Number(deployedInstance.compliancePool).toLocaleString()} RLUSD → Enterprise</span>
+              <span>Per-period rebate</span>
+              <span className="badge badge--green">{Number(deployedInstance.compliancePool).toLocaleString()} XRP → Enterprise (per period)</span>
             </div>
             <div className="template-summary__row">
-              <span>Penalty Pool</span>
-              <span className="badge badge--red">{Number(deployedInstance.penaltyPool).toLocaleString()} RLUSD → Contractor</span>
+              <span>Final bonus</span>
+              <span className="badge badge--amber">{Number(deployedInstance.penaltyPool).toLocaleString()} XRP → Enterprise if 100% compliant</span>
             </div>
             <div className="template-summary__row">
               <span>Escrow Destination</span><code>{deployedInstance.regulatorAddress}</code>
@@ -434,23 +435,23 @@ export function EnterprisePortal() {
               <p><strong>Escrow created on XRPL testnet</strong></p>
               <div className="template-summary">
                 <div className="template-summary__row">
-                  <span>Escrow Sequence</span><code>{escrowResult.sequence}</code>
+                  <span>Escrows created</span><code>{escrowResult.periodicCount} periodic + 1 bonus</code>
                 </div>
                 <div className="template-summary__row">
-                  <span>Transaction</span>
+                  <span>Payment tx</span>
                   <a
                     href={`https://testnet.xrpl.org/transactions/${escrowResult.txHash}`}
                     target="_blank"
                     rel="noreferrer"
                     className="tx-link"
                   >
-                    {escrowResult.txHash.slice(0, 16)}… ↗
+                    {escrowResult.txHash ? `${escrowResult.txHash.slice(0, 16)}… ↗` : 'view ↗'}
                   </a>
                 </div>
               </div>
-              <a className="portal-btn portal-btn--primary" href={`/contract/${deployedInstance.id}`} style={{ marginTop: '16px', display: 'inline-block' }}>
+              <Link className="portal-btn portal-btn--primary" to={`/contract/${deployedInstance.id}`} style={{ marginTop: '16px', display: 'inline-block' }}>
                 View Compliance Dashboard →
-              </a>
+              </Link>
             </div>
           )}
         </div>

@@ -17,7 +17,7 @@ export function ComplianceDashboard({ contractId }: Props) {
   const [error, setError] = useState('');
   const [submitOpen, setSubmitOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitForm, setSubmitForm] = useState({ metricValue: '', verdict: 'compliant' as 'compliant' | 'violation' });
+  const [submitForm, setSubmitForm] = useState({ metricValue: '' });
   const [evaluating, setEvaluating] = useState(false);
   const [claudeVerdict, setClaudeVerdict] = useState<{ verdict: string; explanation: string; recommendedAction: string } | null>(null);
 
@@ -81,7 +81,7 @@ export function ComplianceDashboard({ contractId }: Props) {
       });
       const verdict = await resp.json();
       setClaudeVerdict(verdict);
-      setSubmitForm(prev => ({ ...prev, verdict: verdict.verdict }));
+      // verdict is now auto-computed server-side; no client state needed
     } catch {
       setClaudeVerdict({ verdict: 'error', explanation: 'Could not evaluate with Claude.', recommendedAction: '' });
     } finally {
@@ -99,14 +99,11 @@ export function ComplianceDashboard({ contractId }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          verdict: submitForm.verdict,
           metricValue: Number(submitForm.metricValue),
-          txHash: '',
-          claudeExplanation: claudeVerdict?.explanation ?? '',
         }),
       });
       setSubmitOpen(false);
-      setSubmitForm({ metricValue: '', verdict: 'compliant' });
+      setSubmitForm({ metricValue: '' });
       setClaudeVerdict(null);
     } catch (e: any) {
       setError(e.message ?? String(e));
@@ -131,10 +128,10 @@ export function ComplianceDashboard({ contractId }: Props) {
       <div className="pool-summary">
         {/* Compliance pool */}
         <div className="pool-card pool-card--compliance">
-          <div className="pool-card__title">Compliance Pool</div>
-          <div className="pool-card__subtitle">Returns to Enterprise if compliant</div>
+          <div className="pool-card__title">Per-Period Rebate Pool</div>
+          <div className="pool-card__subtitle">Released each compliant period → Enterprise</div>
           <div className="pool-card__amount">{complianceRemaining.toLocaleString()}</div>
-          <div className="pool-card__currency">RLUSD remaining</div>
+          <div className="pool-card__currency">drops remaining</div>
           <div className="pool-card__bar">
             <div
               className="pool-card__bar-fill pool-card__bar-fill--released"
@@ -142,16 +139,16 @@ export function ComplianceDashboard({ contractId }: Props) {
             />
           </div>
           <div className="pool-card__released">
-            {complianceReleased.toLocaleString()} RLUSD released → Enterprise
+            {complianceReleased.toLocaleString()} drops released → Enterprise
           </div>
         </div>
 
-        {/* Penalty pool */}
+        {/* Penalty pool = final bonus */}
         <div className="pool-card pool-card--penalty">
-          <div className="pool-card__title">Penalty Pool</div>
-          <div className="pool-card__subtitle">Goes to Contractor on violation</div>
+          <div className="pool-card__title">Final Bonus Pool</div>
+          <div className="pool-card__subtitle">Returned at end only if 100% compliant</div>
           <div className="pool-card__amount">{penaltyRemaining.toLocaleString()}</div>
-          <div className="pool-card__currency">RLUSD remaining</div>
+          <div className="pool-card__currency">drops remaining</div>
           <div className="pool-card__bar">
             <div
               className="pool-card__bar-fill pool-card__bar-fill--penalty"
@@ -159,7 +156,7 @@ export function ComplianceDashboard({ contractId }: Props) {
             />
           </div>
           <div className="pool-card__released">
-            {penaltyReleased.toLocaleString()} RLUSD released → Contractor
+            {penaltyReleased.toLocaleString()} drops paid → Contractor
           </div>
         </div>
 
@@ -200,7 +197,7 @@ export function ComplianceDashboard({ contractId }: Props) {
           <div className="template-summary__row"><span>Template</span><span>{template.name}</span></div>
           <div className="template-summary__row"><span>Enterprise</span><code>{instance.enterpriseAddress}</code></div>
           <div className="template-summary__row"><span>Contractor</span><code>{instance.contractorAddress}</code></div>
-          <div className="template-summary__row"><span>Total Locked</span><span>{totalNum.toLocaleString()} RLUSD</span></div>
+          <div className="template-summary__row"><span>Total Locked</span><span>{totalNum.toLocaleString()} XRP</span></div>
           <div className="template-summary__row"><span>Period Length</span><span>{template.periodLengthDays} days</span></div>
           <div className="template-summary__row"><span>Oracle Quorum</span><span>{template.quorumRequired} of {template.oracleCount}</span></div>
           <div className="template-summary__row"><span>Violation Behavior</span><span>{template.violationBehavior.replace('_', ' ')}</span></div>
@@ -229,51 +226,52 @@ export function ComplianceDashboard({ contractId }: Props) {
               <button className="terminal-modal__close" onClick={() => setSubmitOpen(false)}>Close</button>
             </div>
             <div style={{ padding: '20px' }}>
-              <div className="form-row">
-                <label className="form-row__label">
-                  {template.metricDescription}
-                  <span className="form-row__hint">(oracle reading in {template.metricUnit})</span>
-                </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    className="portal-input"
-                    type="number"
-                    step="any"
-                    placeholder={`e.g. ${instance.thresholdPerPeriod[instance.currentPeriod] ?? 0}`}
-                    value={submitForm.metricValue}
-                    onChange={e => { setSubmitForm(prev => ({ ...prev, metricValue: e.target.value })); setClaudeVerdict(null); }}
-                  />
-                  <button
-                    className="portal-btn portal-btn--ghost"
-                    onClick={handleEvaluate}
-                    disabled={evaluating || !submitForm.metricValue}
-                  >
-                    {evaluating ? 'Evaluating…' : 'Ask Claude'}
-                  </button>
-                </div>
-              </div>
+              {/* Live verdict preview */}
+              {(() => {
+                const periodIdx = instance.currentPeriod;
+                const thresh = instance.thresholdPerPeriod[periodIdx] ?? 0;
+                const val = Number(submitForm.metricValue);
+                const hasValue = submitForm.metricValue !== '';
+                const liveCompliant = hasValue
+                  ? (template.complianceIsBelow ? val <= thresh : val >= thresh)
+                  : null;
+                return (
+                  <div className="form-row">
+                    <label className="form-row__label">
+                      {template.metricDescription}
+                      <span className="form-row__hint">
+                        oracle reading in {template.metricUnit} · threshold: {thresh} · compliant when {template.complianceIsBelow ? 'below' : 'above'}
+                      </span>
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        className="portal-input"
+                        type="number"
+                        step="any"
+                        placeholder={`e.g. ${thresh}`}
+                        value={submitForm.metricValue}
+                        onChange={e => { setSubmitForm(prev => ({ ...prev, metricValue: e.target.value })); setClaudeVerdict(null); }}
+                        style={{ flex: 1 }}
+                      />
+                      {liveCompliant !== null && (
+                        <span className={`badge ${liveCompliant ? 'badge--green' : 'badge--red'}`} style={{ whiteSpace: 'nowrap' }}>
+                          {liveCompliant ? '✓ Compliant' : '✗ Violation'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {claudeVerdict && (
                 <div className={`alert ${claudeVerdict.verdict === 'compliant' ? 'alert--success' : claudeVerdict.verdict === 'violation' ? 'alert--error' : 'alert--warn'}`}>
-                  <strong>Claude verdict: {claudeVerdict.verdict.toUpperCase()}</strong>
+                  <strong>Claude analysis: {claudeVerdict.verdict.toUpperCase()}</strong>
                   <p style={{ margin: '6px 0 0' }}>{claudeVerdict.explanation}</p>
                   {claudeVerdict.recommendedAction && (
                     <p style={{ margin: '4px 0 0', opacity: 0.85 }}>→ {claudeVerdict.recommendedAction}</p>
                   )}
                 </div>
               )}
-
-              <div className="form-row" style={{ marginTop: '16px' }}>
-                <label className="form-row__label">Override Verdict</label>
-                <select
-                  className="portal-input"
-                  value={submitForm.verdict}
-                  onChange={e => setSubmitForm(prev => ({ ...prev, verdict: e.target.value as 'compliant' | 'violation' }))}
-                >
-                  <option value="compliant">Compliant — release compliance pool slice → Enterprise</option>
-                  <option value="violation">Violation — release penalty pool slice → Contractor</option>
-                </select>
-              </div>
 
               <button
                 className="portal-btn portal-btn--primary"
@@ -309,7 +307,7 @@ function PeriodRow({ result, template }: { result: PeriodResult; template: impor
           <span className="period-row__threshold"> / threshold {result.threshold}</span>
         </span>
         <span className={`period-row__release ${isCompliant ? 'period-row__release--compliance' : 'period-row__release--penalty'}`}>
-          {Number(result.amountReleased).toLocaleString()} RLUSD → {result.releasedTo}
+          {Number(result.amountReleased).toLocaleString()} drops → {result.releasedTo}
         </span>
         <span className="period-row__time">{new Date(result.timestamp).toLocaleDateString()}</span>
         <span className="period-row__expand">{expanded ? '▲' : '▼'}</span>

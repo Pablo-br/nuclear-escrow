@@ -304,7 +304,7 @@ export function GovernmentPortal() {
             </div>
 
             <div className="form-row-group">
-              <FormRow label="Compliance Pool %" hint="% returned to enterprise if compliant">
+              <FormRow label="Per-period rebate %" hint="% returned to enterprise in periodic slices if compliant">
                 <input
                   className="portal-input"
                   type="number"
@@ -314,7 +314,7 @@ export function GovernmentPortal() {
                   onChange={e => updateField('compliancePoolPct', Number(e.target.value))}
                 />
               </FormRow>
-              <FormRow label="Penalty Pool %" hint="% to contractor on violation">
+              <FormRow label="Final bonus %" hint="% returned only at end if ALL periods compliant, else goes to contractor">
                 <input
                   className="portal-input"
                   type="number"
@@ -385,13 +385,13 @@ export function GovernmentPortal() {
                 className="fund-split-preview__compliance"
                 style={{ width: `${template.compliancePoolPct}%` }}
               >
-                {template.compliancePoolPct}% Compliance (→ Enterprise)
+                {template.compliancePoolPct}% Per-period rebate (→ Enterprise per period)
               </div>
               <div
                 className="fund-split-preview__penalty"
                 style={{ width: `${template.penaltyPoolPct}%` }}
               >
-                {template.penaltyPoolPct}% Penalty (→ Contractor)
+                {template.penaltyPoolPct}% Final bonus (→ Enterprise if 100% compliant)
               </div>
             </div>
           </div>
