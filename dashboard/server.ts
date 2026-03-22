@@ -1,9 +1,12 @@
 import express from 'express';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile, readdir, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
 import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
+import { draftTemplate, explainTemplate, evaluateCompliance, streamDraftTemplate } from '../api/claude-assistant.js';
+import type { ContractTemplate, ContractInstance } from '../shared/src/contract-template.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -187,6 +190,217 @@ app.post('/milestone/:phase', (req, res) => {
   });
 });
 
+// ─── Template & Contract storage helpers ─────────────────────────────────────
+
+const TEMPLATES_DIR = join(__dirname, '..', 'data', 'templates');
+const CONTRACTS_DIR = join(__dirname, '..', 'data', 'contracts');
+
+async function ensureDirs() {
+  await mkdir(TEMPLATES_DIR, { recursive: true });
+  await mkdir(CONTRACTS_DIR, { recursive: true });
+}
+
+async function readJsonDir<T>(dir: string): Promise<T[]> {
+  await mkdir(dir, { recursive: true });
+  const files = await readdir(dir);
+  const items: T[] = [];
+  for (const f of files.filter(f => f.endsWith('.json'))) {
+    try {
+      const raw = await readFile(join(dir, f), 'utf-8');
+      items.push(JSON.parse(raw) as T);
+    } catch {}
+  }
+  return items;
+}
+
+// ─── GET /templates ───────────────────────────────────────────────────────────
+
+app.get('/templates', async (_req, res) => {
+  try {
+    const templates = await readJsonDir<ContractTemplate>(TEMPLATES_DIR);
+    res.json(templates);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── POST /templates — save a template ───────────────────────────────────────
+
+app.post('/templates', async (req, res) => {
+  try {
+    await ensureDirs();
+    const template = req.body as ContractTemplate;
+    if (!template.id) { res.status(400).json({ error: 'template.id required' }); return; }
+    await writeFile(join(TEMPLATES_DIR, `${template.id}.json`), JSON.stringify(template, null, 2));
+    res.json({ ok: true, id: template.id });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── GET /contracts ───────────────────────────────────────────────────────────
+
+app.get('/contracts', async (_req, res) => {
+  try {
+    const contracts = await readJsonDir<ContractInstance>(CONTRACTS_DIR);
+    res.json(contracts);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── GET /contracts/:id ───────────────────────────────────────────────────────
+
+app.get('/contracts/:id', async (req, res) => {
+  try {
+    const filePath = join(CONTRACTS_DIR, `${req.params.id}.json`);
+    if (!existsSync(filePath)) { res.status(404).json({ error: 'not found' }); return; }
+    const raw = await readFile(filePath, 'utf-8');
+    res.json(JSON.parse(raw));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── POST /contracts — create a contract instance ─────────────────────────────
+
+app.post('/contracts', async (req, res) => {
+  try {
+    await ensureDirs();
+    const instance = req.body as ContractInstance;
+    if (!instance.id) { res.status(400).json({ error: 'instance.id required' }); return; }
+    await writeFile(join(CONTRACTS_DIR, `${instance.id}.json`), JSON.stringify(instance, null, 2));
+    res.json({ ok: true, id: instance.id });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── PATCH /contracts/:id — update contract (e.g. add escrow sequences) ───────
+
+app.patch('/contracts/:id', async (req, res) => {
+  try {
+    const filePath = join(CONTRACTS_DIR, `${req.params.id}.json`);
+    if (!existsSync(filePath)) { res.status(404).json({ error: 'not found' }); return; }
+    const existing = JSON.parse(await readFile(filePath, 'utf-8'));
+    const updated = { ...existing, ...req.body };
+    await writeFile(filePath, JSON.stringify(updated, null, 2));
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── POST /ai/draft-template — Claude drafts a template from plain text ───────
+
+app.post('/ai/draft-template', async (req, res) => {
+  const { description } = req.body as { description: string };
+  if (!description) { res.status(400).json({ error: 'description required' }); return; }
+
+  try {
+    const template = await draftTemplate(description);
+    res.json(template);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── POST /ai/draft-template/stream — streaming version ──────────────────────
+
+app.post('/ai/draft-template/stream', async (req, res) => {
+  const { description } = req.body as { description: string };
+  if (!description) { res.status(400).send('description required'); return; }
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+
+  try {
+    for await (const chunk of streamDraftTemplate(description)) {
+      res.write(chunk);
+    }
+    res.end();
+  } catch (e) {
+    res.end(`\n[error] ${String(e)}`);
+  }
+});
+
+// ─── POST /ai/explain — Claude explains a template field ─────────────────────
+
+app.post('/ai/explain', async (req, res) => {
+  const { template, question, field } = req.body as {
+    template: ContractTemplate;
+    question: string;
+    field?: string;
+  };
+  if (!template || !question) {
+    res.status(400).json({ error: 'template and question required' }); return;
+  }
+
+  try {
+    const explanation = await explainTemplate(template, question, field);
+    res.json({ explanation });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── POST /ai/evaluate-compliance — Claude evaluates oracle data ──────────────
+
+app.post('/ai/evaluate-compliance', async (req, res) => {
+  const { template, oracleData, periodIndex, threshold } = req.body;
+  if (!template || !oracleData || periodIndex === undefined || threshold === undefined) {
+    res.status(400).json({ error: 'template, oracleData, periodIndex, threshold required' }); return;
+  }
+
+  try {
+    const verdict = await evaluateCompliance(template, oracleData, periodIndex, threshold);
+    res.json(verdict);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── POST /contracts/:id/period/:n — submit period attestation ───────────────
+// Body: { verdict: 'compliant' | 'violation', metricValue, oracleSigs?, txHash }
+
+app.post('/contracts/:id/period/:n', async (req, res) => {
+  try {
+    const filePath = join(CONTRACTS_DIR, `${req.params.id}.json`);
+    if (!existsSync(filePath)) { res.status(404).json({ error: 'contract not found' }); return; }
+
+    const instance: ContractInstance = JSON.parse(await readFile(filePath, 'utf-8'));
+    const periodIndex = parseInt(req.params.n, 10);
+    const { verdict, metricValue, txHash, claudeExplanation } = req.body;
+
+    const threshold = instance.thresholdPerPeriod[periodIndex] ?? 0;
+    const pct = instance.template.periodDistribution[periodIndex] ?? 0;
+    const pool = verdict === 'compliant' ? instance.compliancePool : instance.penaltyPool;
+    const amountReleased = String(Math.floor(Number(pool) * pct / 100));
+
+    const result = {
+      periodIndex,
+      verdict,
+      metricValue,
+      threshold,
+      oracleCount: instance.oraclePubkeys.length,
+      txHash: txHash ?? '',
+      amountReleased,
+      releasedTo: verdict === 'compliant' ? 'enterprise' : 'contractor',
+      claudeExplanation: claudeExplanation ?? '',
+      timestamp: new Date().toISOString(),
+    };
+
+    instance.periodResults = instance.periodResults ?? [];
+    instance.periodResults.push(result);
+    instance.currentPeriod = periodIndex + 1;
+
+    await writeFile(filePath, JSON.stringify(instance, null, 2));
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = 3001;
@@ -195,4 +409,14 @@ app.listen(PORT, () => {
   console.log(`  GET  /state`);
   console.log(`  POST /deploy`);
   console.log(`  POST /milestone/:phase`);
+  console.log(`  GET  /templates`);
+  console.log(`  POST /templates`);
+  console.log(`  GET  /contracts`);
+  console.log(`  POST /contracts`);
+  console.log(`  PATCH /contracts/:id`);
+  console.log(`  POST /ai/draft-template`);
+  console.log(`  POST /ai/draft-template/stream`);
+  console.log(`  POST /ai/explain`);
+  console.log(`  POST /ai/evaluate-compliance`);
+  console.log(`  POST /contracts/:id/period/:n`);
 });

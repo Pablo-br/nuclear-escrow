@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Link, useParams } from 'react-router-dom';
 import { useEscrowState } from './hooks/useEscrowState.ts';
 import { useMilestoneHistory } from './hooks/useMilestoneHistory.ts';
 import { SiteStatus } from './components/SiteStatus.tsx';
@@ -8,6 +9,9 @@ import { OracleHealth } from './components/OracleHealth.tsx';
 import { AuditFeed } from './components/AuditFeed.tsx';
 import { BankruptcyGuard } from './components/BankruptcyGuard.tsx';
 import { TerminalModal } from './components/TerminalModal.tsx';
+import { ComplianceDashboard } from './components/ComplianceDashboard.tsx';
+import { GovernmentPortal } from './pages/GovernmentPortal.tsx';
+import { EnterprisePortal } from './pages/EnterprisePortal.tsx';
 import {
   MOCK_ORACLES,
   MOCK_YIELD_EARNED,
@@ -21,7 +25,6 @@ interface NuclearState {
   childEscrows: number[];
 }
 
-// Use relative paths — Vite proxies /state, /milestone, /deploy to localhost:3001
 const SERVER = '';
 const isDemoMode = new URLSearchParams(window.location.search).get('demo') === '1';
 
@@ -43,7 +46,9 @@ const FALLBACK_STATE: NuclearState = {
   childEscrows: [],
 };
 
-export default function App() {
+// ─── Nuclear Demo Dashboard ──────────────────────────────────────────────────
+
+function NuclearDashboard() {
   const [nucState, setNucState] = useState<NuclearState | null>(null);
   const [stateLoaded, setStateLoaded] = useState(false);
   const [modalConfig, setModalConfig] = useState<{ url: string; title: string } | null>(null);
@@ -87,7 +92,6 @@ export default function App() {
   const { siteState, escrowBalance, loading } = useEscrowState(escrowOwner, escrowSequence, childEscrows);
   const { milestones } = useMilestoneHistory(escrowOwner);
 
-  // Prefer on-chain siteState; fall back to server file state when master escrow is gone
   const currentMilestone = siteState?.current_milestone ?? nucState?.current_milestone ?? 0;
 
   const handleStartDemo = () =>
@@ -111,19 +115,6 @@ export default function App() {
 
   return (
     <>
-      <header className="app-header">
-        <span className="app-header__logo">☢ NuclearEscrow</span>
-        <span className="app-header__badge">XRPL Testnet</span>
-        <div className="app-header__spacer" />
-        <a
-          href={`https://testnet.xrpl.org/accounts/${escrowOwner}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Explorer ↗
-        </a>
-      </header>
-
       {isDemoMode && (
         <div className="demo-bar">
           <span className="demo-bar__label">Demo controls</span>
@@ -173,5 +164,39 @@ export default function App() {
         />
       )}
     </>
+  );
+}
+
+// ─── Contract page wrapper ────────────────────────────────────────────────────
+
+function ContractPage() {
+  const { id } = useParams<{ id: string }>();
+  if (!id) return <div className="alert alert--error">No contract ID provided</div>;
+  return <ComplianceDashboard contractId={id} />;
+}
+
+// ─── App shell ────────────────────────────────────────────────────────────────
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <header className="app-header">
+        <Link to="/" className="app-header__logo">☢ NuclearEscrow</Link>
+        <span className="app-header__badge">XRPL Testnet</span>
+        <nav className="app-header__nav">
+          <Link to="/">Nuclear Demo</Link>
+          <Link to="/government">Government</Link>
+          <Link to="/enterprise">Enterprise</Link>
+        </nav>
+        <div className="app-header__spacer" />
+      </header>
+
+      <Routes>
+        <Route path="/" element={<NuclearDashboard />} />
+        <Route path="/government" element={<GovernmentPortal />} />
+        <Route path="/enterprise" element={<EnterprisePortal />} />
+        <Route path="/contract/:id" element={<ContractPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
