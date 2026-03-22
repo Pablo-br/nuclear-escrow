@@ -14,44 +14,83 @@ export const CompanyDashboard: React.FC<{ walletAddress: string, walletSeed: str
   }, []);
 
   const handleAccept = async (id: string) => {
+    const contract = contracts.find(c => c.id === id);
+    if (!contract) return;
+
     console.log("Accepting using wallet:", walletAddress);
 
-    try {
+    // Scale: use totalAmount directly as drops (1 RLUSD = 1 drop for testnet demo)
+    // Cap at 7,000,000 drops (7 XRP) to stay within testnet faucet limits
+    const totalDrops = Math.min(contract.totalAmount, 7_000_000);
+    const dropsPerPhase = Math.floor(totalDrops / 7);
+    const NUM_PHASES = 7;
 
+    let escrowSequences: number[] = [];
+    let firstTxHash = '';
+
+    try {
       const wallet = Wallet.fromSeed(walletSeed);
       const client = new Client('wss://s.altnet.rippletest.net:51233');
       await client.connect();
 
-      const toHex = (str: string) => Array.from(str).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('').toUpperCase();
-      const memoData = toHex(`NuclearEscrow-Pact-${id}`);
+      // Ripple epoch offset
+      const rippleNow = Math.floor(Date.now() / 1000) - 946684800;
+      const finishAfter = rippleNow + 30; // unlockable after 30 seconds
 
-      console.log("Submitting XRPL record...");
-      const tx = await client.submitAndWait({
-        TransactionType: 'AccountSet',
-        Account: wallet.classicAddress,
-        Memos: [{ Memo: { MemoData: memoData } }]
-      }, { wallet });
+      console.log(`Creating ${NUM_PHASES} escrows, ${dropsPerPhase} drops each...`);
 
-      alert(`✅ Contrato ${id} aceptado y registrado en la blockchain XRPL.\nHash: ${tx.result.hash}\n\nSe abrirá el Explorer para verificarlo.`);
-      window.open(`https://testnet.xrpl.org/transactions/${tx.result.hash}`, '_blank');
-      
-      // Guardar el hash de aceptación en el backend
+      for (let phase = 0; phase < NUM_PHASES; phase++) {
+        const tx = await client.submitAndWait({
+          TransactionType: 'EscrowCreate',
+          Account: wallet.classicAddress,
+          Amount: String(dropsPerPhase),
+          Destination: wallet.classicAddress, // funds return to company on release
+          FinishAfter: finishAfter,
+        } as any, { wallet });
+
+        const result = tx.result as any;
+        const seq: number = result.Sequence ?? result.tx_json?.Sequence ?? result.seq;
+        const hash: string = result.hash ?? result.tx_json?.hash ?? '';
+        escrowSequences.push(seq);
+        if (phase === 0) firstTxHash = hash;
+        console.log(`Phase ${phase} escrow created: seq=${seq}, hash=${hash}`);
+      }
+
+      await client.disconnect();
+
+      // Persist escrow info + company seed in backend for automated EscrowFinish
       await fetch(`/contracts/${id}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ acceptanceTxHash: tx.result.hash })
+        body: JSON.stringify({
+          acceptanceTxHash: firstTxHash,
+          escrowSequences,
+          companySeed: walletSeed,
+          companyAddress: wallet.classicAddress,
+          totalDrops,
+          dropsPerPhase,
+        }),
       });
-      await client.disconnect();
+
+      alert(
+        `✅ Contrato ${id} aceptado!\n\n` +
+        `${totalDrops.toLocaleString()} drops (${(totalDrops / 1_000_000).toFixed(3)} XRP) bloqueados en ${NUM_PHASES} escrows XRPL.\n` +
+        `Primer TX: ${firstTxHash}\n\n` +
+        `Los fondos se liberarán automáticamente conforme pasen los sensores.`
+      );
+      if (firstTxHash) window.open(`https://testnet.xrpl.org/transactions/${firstTxHash}`, '_blank');
+
     } catch (e: any) {
-      console.error("XRPL Error:", e);
-      alert("⚠️ Contrato aceptado a nivel de sistema. (La escritura XRPL falló localmente, posiblemente la wallet testnet no tenga XRP)");
+      console.error("XRPL Escrow Error:", e);
+      alert("⚠️ Error al crear escrows XRPL: " + e.message + "\n\nVerifica que la wallet tenga suficiente XRP.");
+      // fallback: register without escrow sequences
       await fetch(`/contracts/${id}/accept`, { method: 'POST' });
     }
-    
-    // Actualizar el estado local
-    setContracts(contracts.map(c => 
-      c.id === id 
-        ? { ...c, status: 'active', fundsFrozen: c.totalAmount } 
+
+    // Update local state
+    setContracts(contracts.map(c =>
+      c.id === id
+        ? { ...c, status: 'active', fundsFrozen: contract.totalAmount }
         : c
     ));
   };

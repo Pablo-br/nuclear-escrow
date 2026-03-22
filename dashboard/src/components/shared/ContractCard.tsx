@@ -101,6 +101,7 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract, role, onAc
                     <th>Estado</th>
                     <th>A Empresa</th>
                     <th>A Gobierno (Penalización)</th>
+                    <th>TX On-chain</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -109,13 +110,19 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract, role, onAc
                       <td className="font-mono text-sm">{new Date(evt.timestamp).toLocaleTimeString()}</td>
                       <td className="font-mono text-sm">{evt.radiationLevel.toFixed(2)} mSv <span className="text-xs text-muted">/ {evt.threshold}</span></td>
                       <td>
-                        {evt.passed 
+                        {evt.passed
                           ? <span className="badge success text-xs"><CheckCircle2 size={10} className="mr-1"/> Cumple</span>
                           : <span className="badge danger text-xs"><XCircle size={10} className="mr-1"/> Incumple</span>
                         }
                       </td>
                       <td className="text-success font-mono font-bold">+{formatRLUSD(evt.amountToCompany)}</td>
                       <td className="text-danger font-mono font-bold">{evt.amountToGovernment > 0 ? '+' + formatRLUSD(evt.amountToGovernment) : '0'}</td>
+                      <td>
+                        {(evt as any).txHash
+                          ? <a href={`https://testnet.xrpl.org/transactions/${(evt as any).txHash}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-cyan)', fontSize: '0.7rem' }}>🔗 Ver TX</a>
+                          : <span className="text-xs text-muted">—</span>
+                        }
+                      </td>
                     </tr>
                   ))}
                 </tbody>

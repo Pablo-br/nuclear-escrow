@@ -184,7 +184,8 @@ export const GovernmentDashboard: React.FC<{ walletAddress: string; walletSeed: 
           </div>
           
           <div className="mt-4 p-4 rounded-lg bg-black bg-opacity-20 border border-light mb-6">
-            <p className="text-sm text-muted mb-2">Nota: Se usarán las 7 fases estándar de desmantelamiento con los umbrales predeterminados. La liberación ocurrirá en ciclos de 30 minutos una vez que la empresa acepte y fondee el smart contract.</p>
+            <p className="text-sm text-muted mb-2">Nota: Se usarán las 7 fases estándar de desmantelamiento con los umbrales predeterminados. La liberación ocurrirá en ciclos de 1 minuto una vez que la empresa acepte y fondee el smart contract.</p>
+            <p className="text-xs text-warning mt-2">⚠️ Testnet: El monto se bloquea como XRP drops reales en XRPL (1 RLUSD = 1 drop). Máximo efectivo: 7,000,000 drops (7 XRP). El cron libera cada fase automáticamente via EscrowFinish on-chain.</p>
           </div>
 
           <div className="flex justify-end gap-4 border-t border-light pt-6">

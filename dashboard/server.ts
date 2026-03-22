@@ -4,8 +4,32 @@ import { spawn } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import https from 'https';
+import { Client, Wallet } from 'xrpl';
 import { SensorSimulator, PHASE_THRESHOLDS } from '../oracle/src/sensor-simulator.ts';
 // No mock contracts — all contracts are created through the UI with real wallets
+
+const XRPL_WS = 'wss://s.altnet.rippletest.net:51233';
+
+async function submitEscrowFinish(companySeed: string, ownerAddress: string, escrowSequence: number): Promise<string> {
+  const client = new Client(XRPL_WS);
+  await client.connect();
+  try {
+    const wallet = Wallet.fromSeed(companySeed);
+    const result = await client.submitAndWait({
+      TransactionType: 'EscrowFinish',
+      Account: wallet.classicAddress,
+      Owner: ownerAddress,
+      OfferSequence: escrowSequence,
+    } as any, { wallet });
+    const hash: string = (result.result as any).hash ?? (result.result as any).tx_json?.hash ?? '';
+    const txResult: string = (result.result as any).meta?.TransactionResult ?? 'unknown';
+    console.log(`[EscrowFinish] seq=${escrowSequence} result=${txResult} hash=${hash}`);
+    if (txResult !== 'tesSUCCESS') throw new Error(`EscrowFinish failed: ${txResult}`);
+    return hash;
+  } finally {
+    await client.disconnect();
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -36,11 +60,21 @@ app.post('/contracts', (req, res) => {
 
 app.post('/contracts/:id/accept', (req, res) => {
   const { id } = req.params;
-  const { acceptanceTxHash } = req.body || {};
+  const { acceptanceTxHash, escrowSequences, companySeed, companyAddress, totalDrops, dropsPerPhase } = req.body || {};
   contracts = contracts.map(c =>
-    c.id === id ? { ...c, status: 'active', fundsFrozen: c.totalAmount, acceptanceTxHash: acceptanceTxHash || c.acceptanceTxHash || '' } : c
+    c.id === id ? {
+      ...c,
+      status: 'active',
+      fundsFrozen: c.totalAmount,
+      acceptanceTxHash: acceptanceTxHash || c.acceptanceTxHash || '',
+      escrowSequences: escrowSequences || c.escrowSequences || [],
+      companySeed: companySeed || c.companySeed || '',
+      companyAddress: companyAddress || c.companyAddress || '',
+      totalDrops: totalDrops ?? c.totalDrops ?? 0,
+      dropsPerPhase: dropsPerPhase ?? c.dropsPerPhase ?? 0,
+    } : c
   );
-  console.log(`[POST /contracts/${id}/accept] acceptanceTxHash=${acceptanceTxHash || '(none)'}`);
+  console.log(`[POST /contracts/${id}/accept] acceptanceTxHash=${acceptanceTxHash || '(none)'} escrows=${JSON.stringify(escrowSequences || [])}`);
   res.json({ success: true });
 });
 
@@ -226,10 +260,12 @@ app.listen(PORT, () => {
 });
 
 // ─── Sensor Automation Cycle (1 Minute) ───────────────────────────────────────
-setInterval(() => {
+const processingContracts = new Set<string>();
+
+setInterval(async () => {
   console.log(`[Cron] Executing 1-minute sensor checking cycle...`);
-  for (let c of contracts) {
-    if (c.status === 'active' && c.currentPhase < 7) {
+  for (const c of contracts) {
+    if (c.status === 'active' && c.currentPhase < 7 && !processingContracts.has(c.id)) {
       const sim = new SensorSimulator(c.facilityName);
       // Advance sensor to match contract phase
       for (let i = 0; i < c.currentPhase; i++) sim.advancePhase();
@@ -238,10 +274,28 @@ setInterval(() => {
       const threshold = PHASE_THRESHOLDS[c.currentPhase];
 
       if (batch.median < threshold) {
-        console.log(`[Cron] Contract ${c.id} passed phase ${c.currentPhase} sensor check (${batch.median} < ${threshold}). Releasing funds!`);
+        console.log(`[Cron] Contract ${c.id} passed phase ${c.currentPhase} sensor check (${batch.median} < ${threshold}).`);
 
-        // Approve milestone and release 15% to company iteratively
-        const phaseAmount = Math.floor(c.totalAmount * 0.15);
+        const phaseAmount = c.dropsPerPhase > 0 ? c.dropsPerPhase : Math.floor(c.totalAmount * 0.15);
+        let txHash = '';
+
+        // Submit real EscrowFinish if we have the escrow data
+        if (c.companySeed && c.companyAddress && c.escrowSequences && c.escrowSequences[c.currentPhase]) {
+          processingContracts.add(c.id);
+          try {
+            console.log(`[Cron] Submitting EscrowFinish for contract ${c.id} phase ${c.currentPhase} seq=${c.escrowSequences[c.currentPhase]}...`);
+            txHash = await submitEscrowFinish(c.companySeed, c.companyAddress, c.escrowSequences[c.currentPhase]);
+            console.log(`[Cron] EscrowFinish SUCCESS: ${txHash}`);
+          } catch (err: any) {
+            console.error(`[Cron] EscrowFinish FAILED for ${c.id} phase ${c.currentPhase}: ${err.message}`);
+            processingContracts.delete(c.id);
+            continue; // Skip updating state if TX failed
+          }
+          processingContracts.delete(c.id);
+        } else {
+          console.log(`[Cron] No escrow data for ${c.id}, updating balances in memory only.`);
+        }
+
         c.fundsFrozen = Math.max(0, c.fundsFrozen - phaseAmount);
         c.fundsRecovered += phaseAmount;
         c.history.push({
@@ -250,15 +304,26 @@ setInterval(() => {
           threshold: threshold,
           passed: true,
           amountToCompany: phaseAmount,
-          amountToGovernment: 0
+          amountToGovernment: 0,
+          txHash,
         });
 
         c.currentPhase += 1;
         if (c.currentPhase >= 7) {
           c.status = 'completed';
+          console.log(`[Cron] Contract ${c.id} COMPLETED.`);
         }
       } else {
-        console.log(`[Cron] Contract ${c.id} failed phase ${c.currentPhase} sensor check!`);
+        console.log(`[Cron] Contract ${c.id} failed phase ${c.currentPhase} sensor check (${batch.median} >= ${threshold}).`);
+        c.history.push({
+          timestamp: Date.now(),
+          radiationLevel: batch.median,
+          threshold: threshold,
+          passed: false,
+          amountToCompany: 0,
+          amountToGovernment: 0,
+          txHash: '',
+        });
       }
     }
   }

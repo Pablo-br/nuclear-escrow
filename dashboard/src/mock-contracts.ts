@@ -11,6 +11,7 @@ export interface CycleEvent {
   passed: boolean;
   amountToCompany: number;
   amountToGovernment: number;
+  txHash?: string;
 }
 
 export interface Contract {
