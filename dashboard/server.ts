@@ -36,9 +36,11 @@ app.post('/contracts', (req, res) => {
 
 app.post('/contracts/:id/accept', (req, res) => {
   const { id } = req.params;
+  const { acceptanceTxHash } = req.body || {};
   contracts = contracts.map(c =>
-    c.id === id ? { ...c, status: 'active', fundsFrozen: c.totalAmount } : c
+    c.id === id ? { ...c, status: 'active', fundsFrozen: c.totalAmount, acceptanceTxHash: acceptanceTxHash || c.acceptanceTxHash || '' } : c
   );
+  console.log(`[POST /contracts/${id}/accept] acceptanceTxHash=${acceptanceTxHash || '(none)'}`);
   res.json({ success: true });
 });
 

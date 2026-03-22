@@ -27,6 +27,16 @@ export const ContractCard: React.FC<ContractCardProps> = ({ contract, role, onAc
             {contract.status === 'completed' && <span className="badge neutral"><CheckCircle2 size={12} className="mr-1"/> Completado</span>}
           </div>
           <p className="text-sm font-mono text-muted">ID: {contract.id} • {contract.durationYears} Años</p>
+          {(contract as any).proposalTxHash && (
+            <a href={`https://testnet.xrpl.org/transactions/${(contract as any).proposalTxHash}`} target="_blank" rel="noreferrer" className="text-xs" style={{ color: 'var(--accent-cyan)', textDecoration: 'none' }}>
+              🔗 Ver Propuesta en XRPL Explorer ↗
+            </a>
+          )}
+          {(contract as any).acceptanceTxHash && (
+            <a href={`https://testnet.xrpl.org/transactions/${(contract as any).acceptanceTxHash}`} target="_blank" rel="noreferrer" className="text-xs" style={{ color: 'var(--accent-green)', textDecoration: 'none', marginLeft: (contract as any).proposalTxHash ? '1rem' : '0' }}>
+              🔗 Ver Aceptación en XRPL Explorer ↗
+            </a>
+          )}
         </div>
         
         <div className="text-right">

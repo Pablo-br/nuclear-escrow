@@ -15,13 +15,14 @@ export const CompanyDashboard: React.FC<{ walletAddress: string, walletSeed: str
 
   const handleAccept = async (id: string) => {
     console.log("Accepting using wallet:", walletAddress);
-    
+
     try {
+
       const wallet = Wallet.fromSeed(walletSeed);
       const client = new Client('wss://s.altnet.rippletest.net:51233');
       await client.connect();
 
-      const toHex = (str: string) => Array.from(str).map(c => c.charCodeAt(0).toString(16).padStart(2,'0')).join('').toUpperCase();
+      const toHex = (str: string) => Array.from(str).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('').toUpperCase();
       const memoData = toHex(`NuclearEscrow-Pact-${id}`);
 
       console.log("Submitting XRPL record...");
@@ -31,22 +32,28 @@ export const CompanyDashboard: React.FC<{ walletAddress: string, walletSeed: str
         Memos: [{ Memo: { MemoData: memoData } }]
       }, { wallet });
 
-      alert(`Contrato ${id} aceptado.\nSe ha registrado un ID pacto en XRPL testnet de manera inmutable.\nHash: ${tx.result.hash}`);
+      alert(`✅ Contrato ${id} aceptado y registrado en la blockchain XRPL.\nHash: ${tx.result.hash}\n\nSe abrirá el Explorer para verificarlo.`);
+      window.open(`https://testnet.xrpl.org/transactions/${tx.result.hash}`, '_blank');
+      
+      // Guardar el hash de aceptación en el backend
+      await fetch(`/contracts/${id}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acceptanceTxHash: tx.result.hash })
+      });
       await client.disconnect();
     } catch (e: any) {
       console.error("XRPL Error:", e);
-      alert("Contrato aceptado a nivel de sistema. (La escritura XRPL falló localmente, posiblemente la wallet testnet no tenga los XRP fundacionales)");
+      alert("⚠️ Contrato aceptado a nivel de sistema. (La escritura XRPL falló localmente, posiblemente la wallet testnet no tenga XRP)");
+      await fetch(`/contracts/${id}/accept`, { method: 'POST' });
     }
     
-    await fetch(`/contracts/${id}/accept`, { method: 'POST' });
-    
-    // Simulate accepting contract and depositing funds
+    // Actualizar el estado local
     setContracts(contracts.map(c => 
       c.id === id 
         ? { ...c, status: 'active', fundsFrozen: c.totalAmount } 
         : c
     ));
-    // Here we would interact with XRPL Hook realistically
   };
 
   const handleReject = (id: string) => {
@@ -64,7 +71,7 @@ export const CompanyDashboard: React.FC<{ walletAddress: string, walletSeed: str
       </div>
 
       <div className="grid grid-cols-[1fr,2fr] gap-8 md:grid-cols-1">
-        
+
         {/* Sidebar / Pending Contracts */}
         <div className="glass-panel p-6 h-fit sticky top-24">
           <div className="flex items-center gap-2 mb-4 text-warning">
@@ -80,12 +87,12 @@ export const CompanyDashboard: React.FC<{ walletAddress: string, walletSeed: str
           ) : (
             <div className="space-y-4">
               {pendingContracts.map(c => (
-                <ContractCard 
-                  key={c.id} 
-                  contract={c} 
-                  role="company" 
-                  onAccept={handleAccept} 
-                  onReject={handleReject} 
+                <ContractCard
+                  key={c.id}
+                  contract={c}
+                  role="company"
+                  onAccept={handleAccept}
+                  onReject={handleReject}
                 />
               ))}
             </div>
@@ -105,7 +112,7 @@ export const CompanyDashboard: React.FC<{ walletAddress: string, walletSeed: str
             </div>
           )}
         </div>
-        
+
       </div>
     </div>
   );

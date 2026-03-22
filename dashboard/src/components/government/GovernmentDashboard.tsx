@@ -48,16 +48,10 @@ export const GovernmentDashboard: React.FC<{ walletAddress: string; walletSeed: 
         { phase: 0, description: "Defueling complete", radiationThreshold: 100 },
         { phase: 1, description: "Site restored", radiationThreshold: 0.01 }
       ],
-      history: []
+      history: [],
+      proposalTxHash: '',
+      acceptanceTxHash: '',
     };
-    
-    // 1. Guardar en el backend
-    await fetch('/contracts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newContract)
-    });
-
     // 2. Registrar la propuesta en la blockchain XRPL
     let txHash = '(no registrado)';
     try {
@@ -81,17 +75,34 @@ export const GovernmentDashboard: React.FC<{ walletAddress: string; walletSeed: 
       }, { wallet });
 
       txHash = tx.result.hash;
+      newContract.proposalTxHash = txHash;
       await client.disconnect();
     } catch (e: any) {
       console.error('XRPL Proposal Error:', e);
     }
 
-    alert(
-      `✅ Contrato ${contractId} creado y enviado a la empresa.\n` +
-      `Wallet empresa: ${finalCompanyWallet}\n` +
-      `Hash XRPL de la propuesta: ${txHash}\n\n` +
-      `La empresa podrá verlo al iniciar sesión con su clave secreta.`
-    );
+    // 3. Guardar en el backend (con el hash incluido)
+    await fetch('/contracts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newContract)
+    });
+
+    if (txHash !== '(no registrado)') {
+      const explorerUrl = `https://testnet.xrpl.org/transactions/${txHash}`;
+      alert(
+        `✅ Contrato ${contractId} creado y registrado en la blockchain XRPL.\n\n` +
+        `Wallet empresa: ${finalCompanyWallet}\n` +
+        `Hash: ${txHash}\n\n` +
+        `Se abrirá el Explorer para que lo verifiques.`
+      );
+      window.open(explorerUrl, '_blank');
+    } else {
+      alert(
+        `⚠️ Contrato ${contractId} creado localmente, pero NO se registró en la blockchain.\n` +
+        `Posiblemente la wallet testnet no tiene XRP suficientes.`
+      );
+    }
     
     setContracts([...contracts, newContract]);
     setShowCreateMode(false);
